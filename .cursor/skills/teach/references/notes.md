@@ -2,6 +2,19 @@
 
 Notes are the session record for a section: what happened, what changed, and what a future agent should know before continuing.
 
+## Frontmatter
+
+Start every notes file with YAML frontmatter per the shared schema in [lectures.md](lectures.md):
+
+```yaml
+---
+topic: <slug>
+section: <chapter>.<section>
+type: notes
+date: <YYYY-MM-DD>
+---
+```
+
 ## What to capture
 
 - Key concepts covered and how they were explained

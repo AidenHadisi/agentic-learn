@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learning Dashboard</title>
+<style>
+/* ============================================================
+   Design system — the single visual language for every HTML
+   artifact in this repo. Copy this whole <style> block into new
+   artifacts. Rules: one accent color, no gradients, no shadows,
+   no emoji decoration. Light/dark follows the OS.
+   ============================================================ */
+
+/* ---- Tokens ---- */
+:root {
+  --bg: #ffffff;
+  --bg-raised: #f6f7f9;
+  --text: #1a1d21;
+  --text-muted: #5c6570;
+  --border: #d9dee3;
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  --ok: #15803d;
+  --ok-bg: #f0fdf4;
+  --err: #b91c1c;
+  --err-bg: #fef2f2;
+  --warn: #a16207;
+  --warn-bg: #fefce8;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2.5rem;
+  --space-6: 4rem;
+
+  --radius: 6px;
+  --measure: 70ch;
+
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15181c;
+    --bg-raised: #1e2228;
+    --text: #e6e9ec;
+    --text-muted: #9aa4af;
+    --border: #333a42;
+    --accent: #60a5fa;
+    --accent-contrast: #0c1220;
+    --ok: #4ade80;
+    --ok-bg: #122117;
+    --err: #f87171;
+    --err-bg: #251515;
+    --warn: #facc15;
+    --warn-bg: #242012;
+  }
+}
+
+/* ---- Base ---- */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3) var(--space-6);
+}
+
+/* ---- Typography ---- */
+h1, h2, h3, h4 {
+  line-height: 1.25;
+  margin: var(--space-5) 0 var(--space-3);
+  font-weight: 650;
+}
+h1 { font-size: 2rem; margin-top: 0; }
+h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
+h3 { font-size: 1.2rem; }
+h4 { font-size: 1.05rem; }
+
+p, ul, ol { margin: 0 0 var(--space-3); }
+li { margin-bottom: var(--space-1); }
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+strong { font-weight: 650; }
+
+hr { border: none; border-top: 1px solid var(--border); margin: var(--space-5) 0; }
+
+.muted { color: var(--text-muted); }
+
+blockquote {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--accent);
+  color: var(--text-muted);
+}
+
+/* ---- Code ---- */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+pre {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  overflow-x: auto;
+  margin: 0 0 var(--space-3);
+  line-height: 1.5;
+}
+pre code { background: none; border: none; padding: 0; font-size: 0.875rem; }
+
+/* ---- Tables ---- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 var(--space-3);
+  font-size: 0.95rem;
+}
+th, td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+th {
+  font-weight: 650;
+  border-bottom-width: 2px;
+}
+tbody tr:hover { background: var(--bg-raised); }
+
+/* ---- Callouts ----
+   Default = neutral note. Variants: .callout-key (key takeaways,
+   accent), .callout-warn (pitfalls, warning). */
+.callout {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-muted);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.callout > :last-child { margin-bottom: 0; }
+.callout-title {
+  display: block;
+  font-weight: 650;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+.callout-key { border-left-color: var(--accent); }
+.callout-key .callout-title { color: var(--accent); }
+.callout-warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.callout-warn .callout-title { color: var(--warn); }
+
+/* ---- Cards ---- */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-3);
+}
+.card > :last-child { margin-bottom: 0; }
+.card-title { font-weight: 650; margin-bottom: var(--space-2); }
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.card-grid .card { margin: 0; }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-block;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 550;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--text-muted); }
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+.btn-primary:hover { border-color: var(--accent); opacity: 0.9; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- Quiz ---- */
+.quiz-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  cursor: pointer;
+}
+.quiz-option:hover { border-color: var(--accent); }
+.quiz-option.is-correct {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.quiz-option.is-incorrect {
+  border-color: var(--err);
+  background: var(--err-bg);
+  color: var(--err);
+}
+.quiz-option:disabled { cursor: default; }
+.quiz-option:disabled:not(.is-correct):not(.is-incorrect) { opacity: 0.55; }
+.quiz-explanation {
+  border-left: 3px solid var(--accent);
+  background: var(--bg-raised);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0 var(--space-3);
+  font-size: 0.95rem;
+}
+
+/* ---- Progress bars (dashboard) ---- */
+.progress-track {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  height: 0.6rem;
+  overflow: hidden;
+}
+.progress-fill {
+  background: var(--accent);
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* ---- Badges ---- */
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 650;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem var(--space-2);
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+.badge-accent { color: var(--accent); border-color: var(--accent); }
+
+/* ---- Flashcards (viewer) ---- */
+.flashcard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: var(--space-4);
+  margin: 0 0 var(--space-3);
+  min-height: 7rem;
+  cursor: pointer;
+}
+.flashcard .flashcard-back { display: none; }
+.flashcard.is-flipped .flashcard-front { display: none; }
+.flashcard.is-flipped .flashcard-back { display: block; }
+.flashcard-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+/* ---- Tabs ---- */
+.tab-list {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-3);
+}
+.tab {
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+.tab:hover { color: var(--text); }
+.tab.is-active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-panel[hidden] { display: none; }
+
+/* ---- Stepper (tutorials) ---- */
+.step[hidden] { display: none; }
+.stepper-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.stepper-progress { color: var(--text-muted); font-size: 0.9rem; }
+
+/* ---- Collapsible sections ---- */
+details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+details > summary {
+  cursor: pointer;
+  font-weight: 550;
+  padding: var(--space-1) 0;
+}
+details[open] > summary { margin-bottom: var(--space-2); }
+
+/* ---- Sticky table of contents (lectures) ----
+   On wide screens the TOC docks to the left of the measure. */
+.toc {
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+.toc ul { margin: 0; padding-left: var(--space-4); }
+.toc a { text-decoration: none; }
+@media (min-width: 1200px) {
+  .toc {
+    position: fixed;
+    top: var(--space-5);
+    left: var(--space-3);
+    width: calc((100vw - var(--measure)) / 2 - var(--space-5));
+    max-width: 18rem;
+    max-height: calc(100vh - var(--space-6));
+    overflow-y: auto;
+  }
+}
+</style>
+</head>
+<body>
+<main>
+
+<!-- Regenerated by interactive-builder from topics/*/progress.md, misconceptions.md, and score history.
+     Populated dashboard sections: per-topic completion bars (.progress-track), quiz/exam score history,
+     and a weak-spot list drawn from open misconceptions.md rows. -->
+
+<h1>Learning Dashboard</h1>
+
+<div class="card" style="text-align: center; padding: var(--space-5);">
+  <p class="muted">No topics yet — open this repo in Cursor and say &ldquo;I want to learn X&rdquo;.</p>
+</div>
+
+</main>
+</body>
+</html>
