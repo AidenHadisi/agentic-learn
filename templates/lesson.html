@@ -8,25 +8,29 @@
 /* ============================================================
    Lesson design system — the single visual language for every
    lesson in this repo. Copy this whole <style> block into new
-   lessons. Rules: one accent color, no gradients, no shadows,
-   no emoji decoration. Light/dark follows the OS.
+   lessons. Editorial textbook feel: warm paper surfaces, serif
+   display headings, one accent, subtle depth. No gradients, no
+   emoji decoration. Light/dark follows the OS.
    ============================================================ */
 
 /* ---- Tokens ---- */
 :root {
-  --bg: #ffffff;
-  --bg-raised: #f6f7f9;
-  --text: #1a1d21;
-  --text-muted: #5c6570;
-  --border: #d9dee3;
-  --accent: #2563eb;
+  --bg: #faf9f7;
+  --bg-raised: #f2f0ec;
+  --bg-inset: #edeae5;
+  --text: #1f1d1a;
+  --text-muted: #6f6a62;
+  --border: #e3dfd8;
+  --border-strong: #cfc9bf;
+  --accent: #4f46e5;
+  --accent-soft: #eceafd;
   --accent-contrast: #ffffff;
   --ok: #15803d;
-  --ok-bg: #f0fdf4;
+  --ok-bg: #ecf7ef;
   --err: #b91c1c;
-  --err-bg: #fef2f2;
+  --err-bg: #fbeeee;
   --warn: #a16207;
-  --warn-bg: #fefce8;
+  --warn-bg: #faf4e0;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -35,9 +39,13 @@
   --space-5: 2.5rem;
   --space-6: 4rem;
 
-  --radius: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
   --measure: 70ch;
+  --shadow: 0 1px 2px rgb(28 25 20 / 0.05), 0 4px 14px rgb(28 25 20 / 0.05);
 
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    "Times New Roman", serif;
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
@@ -46,24 +54,30 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #15181c;
-    --bg-raised: #1e2228;
-    --text: #e6e9ec;
-    --text-muted: #9aa4af;
-    --border: #333a42;
-    --accent: #60a5fa;
-    --accent-contrast: #0c1220;
+    --bg: #171614;
+    --bg-raised: #201e1b;
+    --bg-inset: #262421;
+    --text: #ebe8e2;
+    --text-muted: #9d968b;
+    --border: #322f2a;
+    --border-strong: #47433c;
+    --accent: #a5b4fc;
+    --accent-soft: #26263e;
+    --accent-contrast: #14122b;
     --ok: #4ade80;
-    --ok-bg: #122117;
+    --ok-bg: #14231a;
     --err: #f87171;
-    --err-bg: #251515;
-    --warn: #facc15;
-    --warn-bg: #242012;
+    --err-bg: #2a1717;
+    --warn: #fbbf24;
+    --warn-bg: #2a2313;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 14px rgb(0 0 0 / 0.25);
   }
 }
 
 /* ---- Base ---- */
 * { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
@@ -71,31 +85,69 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   font-size: 1.0625rem;
-  line-height: 1.65;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 main {
   max-width: var(--measure);
   margin: 0 auto;
-  padding: var(--space-5) var(--space-3) var(--space-6);
+  padding: var(--space-6) var(--space-4);
 }
 
+::selection { background: var(--accent-soft); }
+
 /* ---- Typography ---- */
-h1, h2, h3, h4 {
-  line-height: 1.25;
-  margin: var(--space-5) 0 var(--space-3);
-  font-weight: 650;
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  margin: var(--space-6) 0 var(--space-3);
 }
-h1 { font-size: 2rem; margin-top: 0; }
-h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
-h3 { font-size: 1.2rem; }
-h4 { font-size: 1.05rem; }
+h1 {
+  font-size: 2.6rem;
+  margin-top: 0;
+  margin-bottom: var(--space-2);
+}
+/* The line right under the h1 becomes a subtitle */
+h1 + .muted {
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  margin-bottom: var(--space-5);
+}
+h2 { font-size: 1.75rem; }
+h2::after {
+  content: "";
+  display: block;
+  width: 2.25rem;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  margin-top: var(--space-2);
+}
+h3 { font-size: 1.25rem; }
+h4 {
+  font-size: 0.85rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin: var(--space-4) 0 var(--space-2);
+}
 
 p, ul, ol { margin: 0 0 var(--space-3); }
 li { margin-bottom: var(--space-1); }
+li::marker { color: var(--accent); }
 
-a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+a:hover { text-decoration-color: var(--accent); }
 
 strong { font-weight: 650; }
 
@@ -104,49 +156,60 @@ hr { border: none; border-top: 1px solid var(--border); margin: var(--space-5) 0
 .muted { color: var(--text-muted); }
 
 blockquote {
-  margin: 0 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  margin: var(--space-4) 0;
+  padding: var(--space-1) var(--space-4);
   border-left: 3px solid var(--accent);
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-style: italic;
   color: var(--text-muted);
 }
 
 /* ---- Code ---- */
 code {
   font-family: var(--font-mono);
-  font-size: 0.875em;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+  background: var(--bg-inset);
+  border-radius: 5px;
+  padding: 0.15em 0.4em;
 }
 
 pre {
-  background: var(--bg-raised);
+  background: var(--bg-inset);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   overflow-x: auto;
-  margin: 0 0 var(--space-3);
-  line-height: 1.5;
+  margin: 0 0 var(--space-4);
+  line-height: 1.6;
 }
-pre code { background: none; border: none; padding: 0; font-size: 0.875rem; }
+pre code { background: none; padding: 0; font-size: 0.875rem; }
 
 /* ---- Tables ---- */
 table {
   width: 100%;
-  border-collapse: collapse;
-  margin: 0 0 var(--space-3);
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0 0 var(--space-4);
   font-size: 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 th, td {
   text-align: left;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
 }
-th {
+thead th {
+  font-size: 0.8rem;
   font-weight: 650;
-  border-bottom-width: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  background: var(--bg-raised);
 }
+tbody tr:last-child th, tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--bg-raised); }
 
 /* ---- Callouts ----
@@ -154,42 +217,53 @@ tbody tr:hover { background: var(--bg-raised); }
    accent), .callout-warn (pitfalls, warning). */
 .callout {
   border: 1px solid var(--border);
-  border-left: 3px solid var(--text-muted);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--bg-raised);
-  padding: var(--space-3);
-  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0;
 }
 .callout > :last-child { margin-bottom: 0; }
 .callout-title {
   display: block;
   font-weight: 650;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.09em;
   color: var(--text-muted);
   margin-bottom: var(--space-2);
 }
-.callout-key { border-left-color: var(--accent); }
+.callout-key {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
 .callout-key .callout-title { color: var(--accent); }
-.callout-warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.callout-warn {
+  background: var(--warn-bg);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+}
 .callout-warn .callout-title { color: var(--warn); }
 
 /* ---- Cards ---- */
 .card {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--bg);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4);
   margin: 0 0 var(--space-3);
+  box-shadow: var(--shadow);
 }
 .card > :last-child { margin-bottom: 0; }
-.card-title { font-weight: 650; margin-bottom: var(--space-2); }
+.card-title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: var(--space-3);
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-4);
 }
 .card-grid .card { margin: 0; }
 
@@ -200,20 +274,23 @@ tbody tr:hover { background: var(--bg-raised); }
   font-size: 0.95rem;
   font-weight: 550;
   color: var(--text);
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-2) var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: var(--space-2) var(--space-4);
   cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
 }
-.btn:hover { border-color: var(--text-muted); }
+.btn:hover { border-color: var(--text-muted); background: var(--bg-raised); }
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
 }
-.btn-primary:hover { border-color: var(--accent); opacity: 0.9; }
-.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-primary:hover { background: var(--accent); opacity: 0.88; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn:disabled:hover { border-color: var(--border-strong); background: var(--bg); }
+.btn-primary:disabled:hover { background: var(--accent); opacity: 0.45; }
 
 /* ---- Quiz ---- */
 .quiz-option {
@@ -221,57 +298,81 @@ tbody tr:hover { background: var(--bg-raised); }
   width: 100%;
   text-align: left;
   font: inherit;
+  line-height: 1.5;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-2);
   cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
 }
-.quiz-option:hover { border-color: var(--accent); }
+.quiz-option:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  transform: translateX(2px);
+}
 .quiz-option.is-correct {
   border-color: var(--ok);
   background: var(--ok-bg);
   color: var(--ok);
+  font-weight: 550;
 }
 .quiz-option.is-incorrect {
   border-color: var(--err);
   background: var(--err-bg);
   color: var(--err);
 }
-.quiz-option:disabled { cursor: default; }
-.quiz-option:disabled:not(.is-correct):not(.is-incorrect) { opacity: 0.55; }
+.quiz-option:disabled { cursor: default; transform: none; }
+.quiz-option:disabled:not(.is-correct):not(.is-incorrect) { opacity: 0.5; background: var(--bg); border-color: var(--border); }
 .quiz-explanation {
   border-left: 3px solid var(--accent);
   background: var(--bg-raised);
   border-radius: 0 var(--radius) var(--radius) 0;
-  padding: var(--space-2) var(--space-3);
-  margin: var(--space-2) 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-3) 0 var(--space-4);
   font-size: 0.95rem;
 }
 
 /* ---- Stepper (walkthroughs) ---- */
+#stepper {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  padding: var(--space-4);
+  margin: 0 0 var(--space-4);
+}
 .step[hidden] { display: none; }
 .stepper-controls {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-3);
   margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
 }
-.stepper-progress { color: var(--text-muted); font-size: 0.9rem; }
+.stepper-progress {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
 
 /* ---- Collapsible sections ---- */
 details {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: var(--space-2) var(--space-3);
+  background: var(--bg-raised);
+  padding: var(--space-2) var(--space-4);
   margin: 0 0 var(--space-3);
 }
 details > summary {
   cursor: pointer;
   font-weight: 550;
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0;
+  color: var(--accent);
 }
 details[open] > summary { margin-bottom: var(--space-2); }
 
@@ -280,21 +381,36 @@ details[open] > summary { margin-bottom: var(--space-2); }
 .toc {
   font-size: 0.9rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-3);
-  margin: 0 0 var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-5);
 }
-.toc ul { margin: 0; padding-left: var(--space-4); }
-.toc a { text-decoration: none; }
+.toc ul { margin: 0; padding: 0; list-style: none; }
+.toc li { margin: 0; }
+.toc a {
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  border-radius: 6px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.toc a:hover { color: var(--accent); background: var(--accent-soft); }
 @media (min-width: 1200px) {
   .toc {
     position: fixed;
-    top: var(--space-5);
-    left: var(--space-3);
-    width: calc((100vw - var(--measure)) / 2 - var(--space-5));
-    max-width: 18rem;
-    max-height: calc(100vh - var(--space-6));
+    top: var(--space-6);
+    left: var(--space-4);
+    width: calc((100vw - var(--measure)) / 2 - var(--space-6));
+    max-width: 17rem;
+    max-height: calc(100vh - var(--space-6) * 2);
     overflow-y: auto;
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    padding: var(--space-1) 0 var(--space-1) var(--space-3);
   }
 }
 
@@ -302,14 +418,18 @@ details[open] > summary { margin-bottom: var(--space-2); }
    SVG figures use the tokens via currentColor / var(--accent) etc.
    so they adapt to light/dark automatically. */
 figure {
-  margin: 0 0 var(--space-3);
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
   text-align: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
 }
 figure svg { max-width: 100%; height: auto; }
 figcaption {
   font-size: 0.85rem;
   color: var(--text-muted);
-  margin-top: var(--space-2);
+  margin-top: var(--space-3);
 }
 </style>
 </head>
@@ -326,7 +446,7 @@ figcaption {
      ========================================================== -->
 
 <h1>Lesson template demo</h1>
-<p class="muted">This page showcases every component in the lesson design system. Real lessons replace this content entirely.</p>
+<p class="muted">Section 0 of 0 — every component in the lesson design system</p>
 
 <nav class="toc">
   <span class="callout-title">Contents</span>
@@ -341,6 +461,7 @@ figcaption {
 
 <h2 id="typography">Typography, tables, code</h2>
 <p>Body text sits in a readable ~70ch measure. It supports <strong>bold key terms</strong>, <a href="#">links</a>, and <code>inline code</code>. Citations look like this [S1].</p>
+<blockquote>Blockquotes get an editorial, serif treatment — use them for definitions worth pausing on.</blockquote>
 <table>
   <thead><tr><th>Concept</th><th>Cost</th><th>Notes</th></tr></thead>
   <tbody>
@@ -376,13 +497,13 @@ figcaption {
 <p>Diagrams are hand-written inline SVG using the design tokens, so they adapt to light and dark automatically.</p>
 <figure>
   <svg viewBox="0 0 420 80" width="420" height="80" role="img" aria-label="Example flow diagram">
-    <rect x="5" y="20" width="110" height="40" rx="6" fill="none" stroke="currentColor"/>
+    <rect x="5" y="20" width="110" height="40" rx="8" fill="none" stroke="currentColor"/>
     <text x="60" y="45" text-anchor="middle" fill="currentColor" font-size="14">Input</text>
     <line x1="115" y1="40" x2="165" y2="40" stroke="currentColor" marker-end="url(#arrow)"/>
-    <rect x="165" y="20" width="110" height="40" rx="6" fill="none" stroke="var(--accent)"/>
+    <rect x="165" y="20" width="110" height="40" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
     <text x="220" y="45" text-anchor="middle" fill="var(--accent)" font-size="14">Process</text>
     <line x1="275" y1="40" x2="325" y2="40" stroke="currentColor" marker-end="url(#arrow)"/>
-    <rect x="325" y="20" width="90" height="40" rx="6" fill="none" stroke="currentColor"/>
+    <rect x="325" y="20" width="90" height="40" rx="8" fill="none" stroke="currentColor"/>
     <text x="370" y="45" text-anchor="middle" fill="currentColor" font-size="14">Output</text>
     <defs>
       <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">

@@ -34,7 +34,7 @@ Quiz quality: test understanding not memorization, randomize correct positions, 
 - Start from `templates/lesson.html` — copy its `<style>` and skeleton, replace demo content, copy the quiz/stepper scripts with real data
 - One file: `topics/<slug>/lessons/<n>-<slug>.html`. Inline everything. No external requests. Must work from `file://`
 - Inline `templates/vendor/highlight.min.js` + theme CSS pair only when the lesson has code
-- Use design tokens only — no hard-coded colors. No gradients, shadows, or emoji
+- Use design tokens only — no hard-coded colors, gradients, or emoji
 
 ## Report
 
