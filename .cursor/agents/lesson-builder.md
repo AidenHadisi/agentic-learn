@@ -13,7 +13,7 @@ Dispatch provides: **topic slug**, **section number/title**, **what it covers**,
 
 ## Research
 
-Web-research the section first. Prefer official docs, specs, and recognized authors. Cite inline with `[S<n>]` markers; list all sources in a `## References` section at the bottom. No uncited nontrivial factual claims.
+Web-research the section first. Prefer official docs, specs, and recognized authors. Cite inline with `[S<n>]` markers that hyperlink to the source: `<a class="cite" href="<source url>">[S1]</a>`. List all sources in a `## References` section at the bottom. No uncited nontrivial factual claims.
 
 ## Content
 

@@ -149,6 +149,16 @@ a {
 }
 a:hover { text-decoration-color: var(--accent); }
 
+/* Inline citation markers — [S1] links straight to the source */
+a.cite {
+  text-decoration: none;
+  font-size: 0.8em;
+  font-weight: 600;
+  vertical-align: super;
+  line-height: 1;
+}
+a.cite:hover { text-decoration: underline; }
+
 strong { font-weight: 650; }
 
 hr { border: none; border-top: 1px solid var(--border); margin: var(--space-5) 0; }
@@ -460,7 +470,7 @@ figcaption {
 </nav>
 
 <h2 id="typography">Typography, tables, code</h2>
-<p>Body text sits in a readable ~70ch measure. It supports <strong>bold key terms</strong>, <a href="#">links</a>, and <code>inline code</code>. Citations look like this [S1].</p>
+<p>Body text sits in a readable ~70ch measure. It supports <strong>bold key terms</strong>, <a href="#">links</a>, and <code>inline code</code>. Citations link straight to the source, like this.<a class="cite" href="#">[S1]</a></p>
 <blockquote>Blockquotes get an editorial, serif treatment — use them for definitions worth pausing on.</blockquote>
 <table>
   <thead><tr><th>Concept</th><th>Cost</th><th>Notes</th></tr></thead>
