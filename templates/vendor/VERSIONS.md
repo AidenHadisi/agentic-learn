@@ -1,20 +1,18 @@
 # Vendored libraries
 
-Single-file builds vendored into this repo so HTML artifacts never touch the network at view time. Inline a library's contents into a `<script>`/`<style>` block only in artifacts that actually use it.
+Single-file builds vendored into this repo so lessons never touch the network at view time. Inline highlight.js (+ theme pair) only into lessons that contain code blocks.
 
 Downloaded 2026-07-05 from jsDelivr.
 
 | File | Library | Version | Source URL |
 | --- | --- | --- | --- |
-| `chart.umd.min.js` | Chart.js (UMD build) | 4.5.1 | https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js |
 | `highlight.min.js` | highlight.js (common languages build) | 11.11.1 | https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1/highlight.min.js |
 | `highlight-github.min.css` | highlight.js GitHub theme (light) | 11.11.1 | https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1/styles/github.min.css |
 | `highlight-github-dark.min.css` | highlight.js GitHub Dark theme | 11.11.1 | https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1/styles/github-dark.min.css |
-| `mermaid.min.js` | Mermaid (IIFE build, global `mermaid`) | 11.16.0 | https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js |
 
 ## Theme pairing
 
-The two highlight.js theme files are a light/dark pair. When inlining, scope each to the matching color scheme:
+The two theme files are a light/dark pair. When inlining, scope each to the matching color scheme:
 
 ```html
 <style>
@@ -24,8 +22,6 @@ The two highlight.js theme files are a light/dark pair. When inlining, scope eac
 }
 </style>
 ```
-
-Wrap the dark theme's rules in the `prefers-color-scheme: dark` media query so one artifact renders correctly in both schemes.
 
 ## Updating
 

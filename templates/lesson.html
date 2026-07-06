@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><!-- TITLE --></title>
+<style>
+/* ============================================================
+   Lesson design system — the single visual language for every
+   lesson in this repo. Copy this whole <style> block into new
+   lessons. Rules: one accent color, no gradients, no shadows,
+   no emoji decoration. Light/dark follows the OS.
+   ============================================================ */
+
+/* ---- Tokens ---- */
+:root {
+  --bg: #ffffff;
+  --bg-raised: #f6f7f9;
+  --text: #1a1d21;
+  --text-muted: #5c6570;
+  --border: #d9dee3;
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  --ok: #15803d;
+  --ok-bg: #f0fdf4;
+  --err: #b91c1c;
+  --err-bg: #fef2f2;
+  --warn: #a16207;
+  --warn-bg: #fefce8;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2.5rem;
+  --space-6: 4rem;
+
+  --radius: 6px;
+  --measure: 70ch;
+
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15181c;
+    --bg-raised: #1e2228;
+    --text: #e6e9ec;
+    --text-muted: #9aa4af;
+    --border: #333a42;
+    --accent: #60a5fa;
+    --accent-contrast: #0c1220;
+    --ok: #4ade80;
+    --ok-bg: #122117;
+    --err: #f87171;
+    --err-bg: #251515;
+    --warn: #facc15;
+    --warn-bg: #242012;
+  }
+}
+
+/* ---- Base ---- */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3) var(--space-6);
+}
+
+/* ---- Typography ---- */
+h1, h2, h3, h4 {
+  line-height: 1.25;
+  margin: var(--space-5) 0 var(--space-3);
+  font-weight: 650;
+}
+h1 { font-size: 2rem; margin-top: 0; }
+h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
+h3 { font-size: 1.2rem; }
+h4 { font-size: 1.05rem; }
+
+p, ul, ol { margin: 0 0 var(--space-3); }
+li { margin-bottom: var(--space-1); }
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+strong { font-weight: 650; }
+
+hr { border: none; border-top: 1px solid var(--border); margin: var(--space-5) 0; }
+
+.muted { color: var(--text-muted); }
+
+blockquote {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--accent);
+  color: var(--text-muted);
+}
+
+/* ---- Code ---- */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+pre {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  overflow-x: auto;
+  margin: 0 0 var(--space-3);
+  line-height: 1.5;
+}
+pre code { background: none; border: none; padding: 0; font-size: 0.875rem; }
+
+/* ---- Tables ---- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 var(--space-3);
+  font-size: 0.95rem;
+}
+th, td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+th {
+  font-weight: 650;
+  border-bottom-width: 2px;
+}
+tbody tr:hover { background: var(--bg-raised); }
+
+/* ---- Callouts ----
+   Default = neutral note. Variants: .callout-key (key takeaways,
+   accent), .callout-warn (pitfalls, warning). */
+.callout {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-muted);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.callout > :last-child { margin-bottom: 0; }
+.callout-title {
+  display: block;
+  font-weight: 650;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+.callout-key { border-left-color: var(--accent); }
+.callout-key .callout-title { color: var(--accent); }
+.callout-warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.callout-warn .callout-title { color: var(--warn); }
+
+/* ---- Cards ---- */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-3);
+}
+.card > :last-child { margin-bottom: 0; }
+.card-title { font-weight: 650; margin-bottom: var(--space-2); }
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.card-grid .card { margin: 0; }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-block;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 550;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--text-muted); }
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+.btn-primary:hover { border-color: var(--accent); opacity: 0.9; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- Quiz ---- */
+.quiz-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  cursor: pointer;
+}
+.quiz-option:hover { border-color: var(--accent); }
+.quiz-option.is-correct {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.quiz-option.is-incorrect {
+  border-color: var(--err);
+  background: var(--err-bg);
+  color: var(--err);
+}
+.quiz-option:disabled { cursor: default; }
+.quiz-option:disabled:not(.is-correct):not(.is-incorrect) { opacity: 0.55; }
+.quiz-explanation {
+  border-left: 3px solid var(--accent);
+  background: var(--bg-raised);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0 var(--space-3);
+  font-size: 0.95rem;
+}
+
+/* ---- Stepper (walkthroughs) ---- */
+.step[hidden] { display: none; }
+.stepper-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.stepper-progress { color: var(--text-muted); font-size: 0.9rem; }
+
+/* ---- Collapsible sections ---- */
+details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+details > summary {
+  cursor: pointer;
+  font-weight: 550;
+  padding: var(--space-1) 0;
+}
+details[open] > summary { margin-bottom: var(--space-2); }
+
+/* ---- Sticky table of contents ----
+   On wide screens the TOC docks to the left of the measure. */
+.toc {
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+.toc ul { margin: 0; padding-left: var(--space-4); }
+.toc a { text-decoration: none; }
+@media (min-width: 1200px) {
+  .toc {
+    position: fixed;
+    top: var(--space-5);
+    left: var(--space-3);
+    width: calc((100vw - var(--measure)) / 2 - var(--space-5));
+    max-width: 18rem;
+    max-height: calc(100vh - var(--space-6));
+    overflow-y: auto;
+  }
+}
+
+/* ---- Figures (hand-written SVG) ----
+   SVG figures use the tokens via currentColor / var(--accent) etc.
+   so they adapt to light/dark automatically. */
+figure {
+  margin: 0 0 var(--space-3);
+  text-align: center;
+}
+figure svg { max-width: 100%; height: auto; }
+figcaption {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: var(--space-2);
+}
+</style>
+</head>
+<body>
+<main>
+
+<!-- CONTENT -->
+<!-- ==========================================================
+     DEMO CONTENT — replaceable slot content.
+     Everything between CONTENT and /CONTENT is a living style
+     guide: it exists so opening lesson.html in a browser renders
+     every component. When assembling a real lesson, delete all
+     of it and put the lesson's content here.
+     ========================================================== -->
+
+<h1>Lesson template demo</h1>
+<p class="muted">This page showcases every component in the lesson design system. Real lessons replace this content entirely.</p>
+
+<nav class="toc">
+  <span class="callout-title">Contents</span>
+  <ul>
+    <li><a href="#typography">Typography</a></li>
+    <li><a href="#callouts">Callouts</a></li>
+    <li><a href="#figures">Figures</a></li>
+    <li><a href="#stepper">Walkthrough stepper</a></li>
+    <li><a href="#quiz">Quiz</a></li>
+  </ul>
+</nav>
+
+<h2 id="typography">Typography, tables, code</h2>
+<p>Body text sits in a readable ~70ch measure. It supports <strong>bold key terms</strong>, <a href="#">links</a>, and <code>inline code</code>. Citations look like this [S1].</p>
+<table>
+  <thead><tr><th>Concept</th><th>Cost</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Lookup</td><td>O(1)</td><td>Average case</td></tr>
+    <tr><td>Resize</td><td>O(n)</td><td>Rehashes every key</td></tr>
+  </tbody>
+</table>
+<pre><code>def greet(name):
+    return f"hello {name}"</code></pre>
+
+<h2 id="callouts">Callouts and collapsibles</h2>
+<div class="callout">
+  <span class="callout-title">Note</span>
+  <p>A neutral callout for context or definitions.</p>
+</div>
+<div class="callout callout-key">
+  <span class="callout-title">Key takeaways</span>
+  <ul>
+    <li>The accent variant marks the lesson's key takeaways.</li>
+    <li>One idea per bullet.</li>
+  </ul>
+</div>
+<div class="callout callout-warn">
+  <span class="callout-title">Pitfall</span>
+  <p>The warning variant flags common mistakes and gotchas.</p>
+</div>
+<details>
+  <summary>Show the hint</summary>
+  <p>Collapsible sections use native <code>&lt;details&gt;</code> — good for hints and optional depth.</p>
+</details>
+
+<h2 id="figures">Figures</h2>
+<p>Diagrams are hand-written inline SVG using the design tokens, so they adapt to light and dark automatically.</p>
+<figure>
+  <svg viewBox="0 0 420 80" width="420" height="80" role="img" aria-label="Example flow diagram">
+    <rect x="5" y="20" width="110" height="40" rx="6" fill="none" stroke="currentColor"/>
+    <text x="60" y="45" text-anchor="middle" fill="currentColor" font-size="14">Input</text>
+    <line x1="115" y1="40" x2="165" y2="40" stroke="currentColor" marker-end="url(#arrow)"/>
+    <rect x="165" y="20" width="110" height="40" rx="6" fill="none" stroke="var(--accent)"/>
+    <text x="220" y="45" text-anchor="middle" fill="var(--accent)" font-size="14">Process</text>
+    <line x1="275" y1="40" x2="325" y2="40" stroke="currentColor" marker-end="url(#arrow)"/>
+    <rect x="325" y="20" width="90" height="40" rx="6" fill="none" stroke="currentColor"/>
+    <text x="370" y="45" text-anchor="middle" fill="currentColor" font-size="14">Output</text>
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+      </marker>
+    </defs>
+  </svg>
+  <figcaption>Figure 1 — a simple flow, drawn with tokens.</figcaption>
+</figure>
+
+<h2 id="stepper">Walkthrough stepper</h2>
+<div id="stepper">
+  <div class="step"><p><strong>Step one.</strong> Steppers walk through a process one stage at a time.</p></div>
+  <div class="step"><p><strong>Step two.</strong> Each step can hold any content — prose, code, figures.</p></div>
+  <div class="step"><p><strong>Step three.</strong> Use them when sequence matters.</p></div>
+  <div class="stepper-controls">
+    <button class="btn" data-dir="-1">Back</button>
+    <span class="stepper-progress"></span>
+    <button class="btn btn-primary" data-dir="1">Next</button>
+  </div>
+</div>
+
+<h2 id="quiz">Quiz</h2>
+<p>The quiz is self-serve: instant feedback, an explanation after each answer, and a score at the end. The score is for the student only.</p>
+<div id="quiz"></div>
+
+<!-- /CONTENT — end of replaceable demo content -->
+
+</main>
+<script>
+/* ============================================================
+   Lesson interactions — dependency-free. Copy only the snippets
+   a lesson uses. Class names match the design system above.
+   ============================================================ */
+
+/* ---- Quiz engine ----------------------------------------------------
+   One question at a time → click an option → instant feedback +
+   explanation reveal → Next → score summary at the end.
+
+   Markup:  <div id="quiz"></div>
+   Data:    a QUIZ array; `answer` is the index of the correct option.
+*/
+(function () {
+  const QUIZ = [
+    {
+      q: "What does clicking an option do in this quiz engine?",
+      options: [
+        "Submits all answers at once at the end",
+        "Shows instant feedback and an explanation",
+        "Sends the result to a server",
+        "Nothing until you press a submit button",
+      ],
+      answer: 1,
+      explain: "Feedback is immediate and self-contained — the correct option turns green, a wrong pick turns red, and the explanation appears.",
+    },
+    {
+      q: "Who sees the final score?",
+      options: [
+        "The student only — nothing is recorded anywhere",
+        "The teaching agent, which logs it",
+        "A progress dashboard",
+        "It is appended to the lesson file",
+      ],
+      answer: 0,
+      explain: "Quizzes are self-scored. The score is shown on screen for the student and never leaves the page.",
+    },
+  ];
+
+  const root = document.getElementById("quiz");
+  if (!root) return;
+  let current = 0;
+  let correct = 0;
+
+  function render() {
+    if (current >= QUIZ.length) {
+      root.innerHTML =
+        '<div class="card"><div class="card-title">Score: ' +
+        correct + " / " + QUIZ.length +
+        "</div><p class=\"muted\">Retake any questions you missed by reloading the page.</p></div>";
+      return;
+    }
+    const item = QUIZ[current];
+    root.innerHTML = "";
+
+    const progress = document.createElement("p");
+    progress.className = "muted";
+    progress.textContent = "Question " + (current + 1) + " of " + QUIZ.length;
+    root.appendChild(progress);
+
+    const question = document.createElement("h3");
+    question.textContent = item.q;
+    root.appendChild(question);
+
+    item.options.forEach(function (text, i) {
+      const btn = document.createElement("button");
+      btn.className = "quiz-option";
+      btn.textContent = String.fromCharCode(65 + i) + ". " + text;
+      btn.addEventListener("click", function () { answer(i); });
+      root.appendChild(btn);
+    });
+  }
+
+  function answer(picked) {
+    const item = QUIZ[current];
+    const options = root.querySelectorAll(".quiz-option");
+    options.forEach(function (btn, i) {
+      btn.disabled = true;
+      if (i === item.answer) btn.classList.add("is-correct");
+      else if (i === picked) btn.classList.add("is-incorrect");
+    });
+    if (picked === item.answer) correct++;
+
+    const explain = document.createElement("div");
+    explain.className = "quiz-explanation";
+    explain.innerHTML = "<strong>Why:</strong> " + item.explain;
+    root.appendChild(explain);
+
+    const next = document.createElement("button");
+    next.className = "btn btn-primary";
+    next.textContent = current + 1 < QUIZ.length ? "Next question" : "See score";
+    next.addEventListener("click", function () { current++; render(); });
+    root.appendChild(next);
+  }
+
+  render();
+})();
+
+/* ---- Walkthrough stepper --------------------------------------------
+   Shows one .step at a time with Back / Next controls and a progress
+   readout.
+
+   Markup:  <div id="stepper">
+              <div class="step">Step one…</div>
+              <div class="step">Step two…</div>
+              <div class="stepper-controls">
+                <button class="btn" data-dir="-1">Back</button>
+                <span class="stepper-progress"></span>
+                <button class="btn btn-primary" data-dir="1">Next</button>
+              </div>
+            </div>
+*/
+(function () {
+  const stepper = document.getElementById("stepper");
+  if (!stepper) return;
+  const steps = stepper.querySelectorAll(".step");
+  const progress = stepper.querySelector(".stepper-progress");
+  const buttons = stepper.querySelectorAll("[data-dir]");
+  let index = 0;
+
+  function show() {
+    steps.forEach(function (s, i) { s.hidden = i !== index; });
+    progress.textContent = "Step " + (index + 1) + " of " + steps.length;
+    buttons.forEach(function (btn) {
+      const dir = Number(btn.dataset.dir);
+      btn.disabled = index + dir < 0 || index + dir >= steps.length;
+    });
+  }
+
+  buttons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      index += Number(btn.dataset.dir);
+      show();
+    });
+  });
+
+  show();
+})();
+</script>
+</body>
+</html>

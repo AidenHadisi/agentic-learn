@@ -1,10 +1,12 @@
 # learn
 
-A personal learning environment where AI agents act as teachers. Each topic lives in its own directory with the syllabus, progress, lectures, notes, and quizzes needed to continue learning across sessions.
+A personal learning environment where an AI agent acts as a teacher. Each topic lives in its own directory with a syllabus, a journal, and one self-contained HTML lesson per section — everything needed to continue learning across sessions.
 
 ## How it works
 
-The teaching protocol lives in `.cursor/skills/teach/`. The main agent orchestrates learning in chat and dispatches specialized subagents for production work: `researcher`, `lecture-writer`, `lecture-reviewer`, `quiz-master`, and `interactive-builder`. Lectures are researched first, cited from a per-topic source ledger, and ship as markdown plus a standalone HTML twin. Chat is ephemeral; anything important should be captured in topic files.
+The teaching protocol lives in `.cursor/skills/teach/`. The agent interviews you, writes a syllabus, then teaches one section at a time: a `lesson-builder` subagent researches the section and produces a beautiful standalone HTML lesson (content, visuals, practice, and an embedded quiz with cited sources), and the agent teaches it interactively in chat. Quizzes are self-scored inside the lesson — your score is yours alone. Works for any subject, not just coding.
+
+Chat is ephemeral; the syllabus checkboxes and the journal carry all state.
 
 ## Getting started
 
@@ -12,40 +14,21 @@ Open Cursor in this repo and say:
 
 > I want to learn X
 
-The agent will interview you, build a syllabus, create a progress tracker, and prepare the first lecture.
-
 ## Common requests
 
-- "Let's continue" — resume from the topic's progress table
-- "Teach the next section" — prepare or use the next lecture and teach it interactively
-- "Quiz me" — write and grade a multiple-choice quiz
-- "Drill me" — run due flashcards from the Leitner deck
-- "Chapter exam" — cumulative exam at chapter completion
-- "Review" — focus on weak spots from notes, quizzes, and progress
-- "Show my dashboard" — open `dashboard.html` for cross-topic progress and scores
+- "I want to learn X" — interview, syllabus, first lesson
+- "Teach the next section" — build (or reuse) the next lesson and teach it
+- "Review" — re-teach and probe the journal's weak spots
 
 ## Layout
 
 ```
-dashboard.html              # cross-topic progress, scores, weak spots (regenerated each session)
-templates/html/             # design-system base, components, vendored libs for HTML artifacts
-├── base.html
-├── components.js
-└── vendor/
+templates/
+├── lesson.html             # design system + quiz/stepper JS, the base for every lesson
+└── vendor/                 # highlight.js (inlined only into lessons with code)
 
 topics/<topic-slug>/
-├── syllabus.md
-├── progress.md
-├── sources.md          # research ledger, cited by lectures
-├── misconceptions.md   # wrong answers + confusions, open/resolved
-├── lectures/           # <ch>-<sec>-<slug>.md + .html
-├── tutorials/          # optional interactive HTML companions
-├── notes/              # session records
-├── cheatsheets/        # one per chapter, md + html
-├── quizzes/            # quiz records (md) + optional practice html
-├── exams/              # cumulative chapter exams
-├── exercises/          # runnable coding projects
-└── flashcards/
-    ├── deck.md         # cards + Leitner scheduling state
-    └── index.html      # standalone viewer, deck embedded
+├── syllabus.md             # goal + checkbox sections (= progress)
+├── journal.md              # student profile + dated teaching log + weak spots
+└── lessons/<n>-<slug>.html # one per section: lecture, visuals, practice, quiz, references
 ```
