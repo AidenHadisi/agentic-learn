@@ -40,6 +40,3 @@ Get sign-off on the syllabus before teaching.
 
 Read the journal's Weak Spots. Re-explain differently, probe until the student demonstrates understanding, then update the journal.
 
-## Reference
-
-[references/lesson-guide.md](references/lesson-guide.md) — lesson quality rules for the lesson-builder.
