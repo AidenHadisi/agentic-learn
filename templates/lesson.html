@@ -442,6 +442,15 @@ figcaption {
   margin-top: var(--space-3);
 }
 </style>
+<style>
+/* ---- highlight.js themes (vendored, see templates/vendor/VERSIONS.md) ----
+   github (light) + github-dark, switched by OS preference.
+   Placeholders below are replaced by templates/new-lesson.sh. */
+/* HLJS-LIGHT-CSS */
+@media (prefers-color-scheme: dark) {
+/* HLJS-DARK-CSS */
+}
+</style>
 </head>
 <body>
 <main>
@@ -540,6 +549,36 @@ figcaption {
 <p>The quiz is self-serve: instant feedback, an explanation after each answer, and a score at the end. The score is for the student only.</p>
 <div id="quiz"></div>
 
+<!-- QUIZ-DATA — lesson-specific quiz questions as JSON.
+     `answer` is the index of the correct option in authored order;
+     the engine shuffles positions at render time. -->
+<script type="application/json" id="quiz-data">
+[
+  {
+    "q": "What does clicking an option do in this quiz engine?",
+    "options": [
+      "Submits all answers at once at the end",
+      "Shows instant feedback and an explanation",
+      "Sends the result to a server",
+      "Nothing until you press a submit button"
+    ],
+    "answer": 1,
+    "explain": "Feedback is immediate and self-contained — the correct option turns green, a wrong pick turns red, and the explanation appears."
+  },
+  {
+    "q": "Who sees the final score?",
+    "options": [
+      "The student only — nothing is recorded anywhere",
+      "The teaching agent, which logs it",
+      "A progress dashboard",
+      "It is appended to the lesson file"
+    ],
+    "answer": 0,
+    "explain": "Quizzes are self-scored. The score is shown on screen for the student and never leaves the page."
+  }
+]
+</script>
+
 <!-- /CONTENT — end of replaceable demo content -->
 
 </main>
@@ -553,39 +592,35 @@ figcaption {
    One question at a time → click an option → instant feedback +
    explanation reveal → Next → score summary at the end.
 
-   Markup:  <div id="quiz"></div>
-   Data:    a QUIZ array; `answer` is the index of the correct option.
+   Markup:  <div id="quiz"></div> plus a
+            <script type="application/json" id="quiz-data"> block in the
+            content area holding the questions. `answer` is the index of
+            the correct option in authored order.
+   Options are shuffled at render time, so the authored answer index
+   carries no positional signal.
+
+   This script is generic — lessons customize the quiz by editing only
+   the quiz-data JSON, never this engine.
 */
 (function () {
-  const QUIZ = [
-    {
-      q: "What does clicking an option do in this quiz engine?",
-      options: [
-        "Submits all answers at once at the end",
-        "Shows instant feedback and an explanation",
-        "Sends the result to a server",
-        "Nothing until you press a submit button",
-      ],
-      answer: 1,
-      explain: "Feedback is immediate and self-contained — the correct option turns green, a wrong pick turns red, and the explanation appears.",
-    },
-    {
-      q: "Who sees the final score?",
-      options: [
-        "The student only — nothing is recorded anywhere",
-        "The teaching agent, which logs it",
-        "A progress dashboard",
-        "It is appended to the lesson file",
-      ],
-      answer: 0,
-      explain: "Quizzes are self-scored. The score is shown on screen for the student and never leaves the page.",
-    },
-  ];
-
   const root = document.getElementById("quiz");
-  if (!root) return;
+  const data = document.getElementById("quiz-data");
+  if (!root || !data) return;
+  const QUIZ = JSON.parse(data.textContent);
   let current = 0;
   let correct = 0;
+
+  // Shuffle each question's options once (Fisher–Yates) so the correct
+  // answer lands in a random position regardless of authoring order.
+  QUIZ.forEach(function (item) {
+    const order = item.options.map(function (_, i) { return i; });
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+    }
+    item.options = order.map(function (i) { return item.options[i]; });
+    item.answer = order.indexOf(item.answer);
+  });
 
   function render() {
     if (current >= QUIZ.length) {
@@ -682,5 +717,11 @@ figcaption {
   show();
 })();
 </script>
+<script>
+/* ---- highlight.js (vendored, see templates/vendor/VERSIONS.md) ----
+   The placeholder line below is replaced by templates/new-lesson.sh. */
+// HLJS-JS
+</script>
+<script>if (window.hljs) hljs.highlightAll();</script>
 </body>
 </html>
