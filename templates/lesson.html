@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><!-- TITLE --></title>
+<title>Lesson title</title>
 <style>
 /* ============================================================
    Lesson design system — the single visual language for every
@@ -29,7 +29,7 @@
   --ok-bg: #ecf7ef;
   --err: #b91c1c;
   --err-bg: #fbeeee;
-  --warn: #a16207;
+  --warn: #854d0e;
   --warn-bg: #faf4e0;
 
   --space-1: 0.25rem;
@@ -97,6 +97,37 @@ main {
 }
 
 ::selection { background: var(--accent-soft); }
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 3px;
+}
+
+.lesson-header {
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.lesson-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.lesson-objective {
+  max-width: 58ch;
+  margin-top: var(--space-4);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--accent);
+}
 
 /* ---- Typography ---- */
 h1, h2, h3 {
@@ -346,7 +377,7 @@ tbody tr:hover { background: var(--bg-raised); }
 }
 
 /* ---- Stepper (walkthroughs) ---- */
-#stepper {
+[data-stepper] {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-raised);
@@ -407,6 +438,11 @@ details[open] > summary { margin-bottom: var(--space-2); }
   text-decoration: none;
 }
 .toc a:hover { color: var(--accent); background: var(--accent-soft); }
+.toc a.is-active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 650;
+}
 @media (min-width: 1200px) {
   .toc {
     position: fixed;
@@ -441,16 +477,124 @@ figcaption {
   color: var(--text-muted);
   margin-top: var(--space-3);
 }
-</style>
-<style>
-/* ---- highlight.js themes (vendored, see templates/vendor/VERSIONS.md) ----
-   github (light) + github-dark, switched by OS preference.
-   Placeholders below are replaced by templates/new-lesson.sh. */
-/* HLJS-LIGHT-CSS */
-@media (prefers-color-scheme: dark) {
-/* HLJS-DARK-CSS */
+
+.reveal,
+[data-scenario],
+[data-ordering],
+[data-playground],
+[data-tabs] {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+}
+.reveal [data-reveal-content],
+.scenario-feedback,
+.feedback {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-left: 3px solid var(--accent);
+  background: var(--bg);
+}
+.scenario-choice {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  cursor: pointer;
+}
+.scenario-choice:hover { border-color: var(--accent); }
+.ordering-list {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  list-style-position: inside;
+}
+.ordering-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.ordering-controls { display: flex; gap: var(--space-2); }
+.feedback.is-correct { border-color: var(--ok); color: var(--ok); }
+.feedback.is-incorrect { border-color: var(--err); color: var(--err); }
+.playground-controls { display: grid; gap: var(--space-3); }
+.playground-controls label {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) 2fr 3rem;
+  align-items: center;
+  gap: var(--space-3);
+}
+.playground-controls input { width: 100%; accent-color: var(--accent); }
+.playground-output {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+.metric {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.metric span, .metric strong { display: block; }
+.metric span { color: var(--text-muted); font-size: 0.8rem; }
+.metric strong { margin-top: var(--space-1); font-size: 1.35rem; }
+[role="tablist"] { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+[role="tab"][aria-selected="true"] {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+[role="tabpanel"] { padding-top: var(--space-3); }
+.chart-frame { position: relative; min-height: 22rem; }
+[data-cytoscape] {
+  min-height: 28rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+[data-mermaid] { overflow-x: auto; text-align: center; }
+
+@media (max-width: 640px) {
+  main { padding: var(--space-5) var(--space-3); }
+  h1 { font-size: 2.1rem; }
+  .playground-controls label { grid-template-columns: 1fr 3rem; }
+  .playground-controls input { grid-column: 1 / -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  body { background: white; color: black; font-size: 11pt; }
+  main { max-width: none; padding: 0; }
+  .toc, button, .stepper-controls { display: none !important; }
+  [hidden] { display: block !important; }
+  a { color: inherit; text-decoration: underline; }
+  .card, .callout, figure { break-inside: avoid; box-shadow: none; }
 }
 </style>
+<!-- GENERATED-STYLES:START -->
+<!-- GENERATED-STYLES:END -->
 </head>
 <body>
 <main>
@@ -464,8 +608,15 @@ figcaption {
      of it and put the lesson's content here.
      ========================================================== -->
 
-<h1>Lesson template demo</h1>
-<p class="muted">Section 0 of 0 — every component in the lesson design system</p>
+<header class="lesson-header">
+  <p class="eyebrow">Component gallery</p>
+  <h1>Lesson design system</h1>
+  <div class="lesson-meta">
+    <span>Section 0 of 0</span>
+    <span>12 minute reference</span>
+  </div>
+  <p class="lesson-objective"><strong>Objective:</strong> Verify every visual, interactive, and optional lesson capability in one standalone page.</p>
+</header>
 
 <nav class="toc">
   <span class="callout-title">Contents</span>
@@ -474,6 +625,8 @@ figcaption {
     <li><a href="#callouts">Callouts</a></li>
     <li><a href="#figures">Figures</a></li>
     <li><a href="#stepper">Walkthrough stepper</a></li>
+    <li><a href="#interactions">Learning interactions</a></li>
+    <li><a href="#capabilities">Optional capabilities</a></li>
     <li><a href="#quiz">Quiz</a></li>
   </ul>
 </nav>
@@ -534,20 +687,129 @@ figcaption {
 </figure>
 
 <h2 id="stepper">Walkthrough stepper</h2>
-<div id="stepper">
+<div data-stepper>
   <div class="step"><p><strong>Step one.</strong> Steppers walk through a process one stage at a time.</p></div>
   <div class="step"><p><strong>Step two.</strong> Each step can hold any content — prose, code, figures.</p></div>
   <div class="step"><p><strong>Step three.</strong> Use them when sequence matters.</p></div>
   <div class="stepper-controls">
-    <button class="btn" data-dir="-1">Back</button>
+    <button class="btn" type="button" data-dir="-1">Back</button>
     <span class="stepper-progress"></span>
-    <button class="btn btn-primary" data-dir="1">Next</button>
+    <button class="btn btn-primary" type="button" data-dir="1">Next</button>
   </div>
 </div>
 
+<h2 id="interactions">Learning interactions</h2>
+<div class="reveal" data-reveal>
+  <p><strong>Predict first:</strong> Why is retrieval more durable than rereading?</p>
+  <button class="btn btn-primary" type="button" data-reveal-trigger>Reveal explanation</button>
+  <div data-reveal-content tabindex="-1">Retrieval strengthens the path used to recall knowledge instead of only making the material feel familiar.</div>
+</div>
+
+<div data-scenario data-source="scenario-data" aria-live="polite"></div>
+<script type="application/json" id="scenario-data">
+{
+  "start": "prompt",
+  "nodes": [
+    {
+      "id": "prompt",
+      "title": "A source makes a surprising claim",
+      "body": "What should the researcher do next?",
+      "choices": [
+        {"label": "Cross-check the primary evidence", "next": "verify"},
+        {"label": "Repeat it because it sounds useful", "next": "guess"}
+      ]
+    },
+    {"id": "verify", "title": "Grounded", "body": "The claim is checked before teaching.", "feedback": "Good research separates evidence from plausibility."},
+    {"id": "guess", "title": "Unsupported", "body": "The lesson would inherit an avoidable error.", "feedback": "Return to the source and verify the claim first."}
+  ]
+}
+</script>
+
+<div data-ordering data-source="ordering-data"></div>
+<script type="application/json" id="ordering-data">
+{
+  "items": [
+    {"id": "research", "label": "Research the section"},
+    {"id": "synthesize", "label": "Synthesize the evidence"},
+    {"id": "build", "label": "Build the lesson"}
+  ],
+  "correct": ["research", "synthesize", "build"],
+  "success": "Correct — evidence comes before instruction.",
+  "retry": "Not yet. Start with the evidence-gathering step."
+}
+</script>
+
+<div data-playground data-source="playground-data"></div>
+<script type="application/json" id="playground-data">
+{
+  "controls": [
+    {"id": "examples", "label": "Worked examples", "min": 0, "max": 5, "step": 1, "value": 2},
+    {"id": "practice", "label": "Practice rounds", "min": 0, "max": 5, "step": 1, "value": 2}
+  ],
+  "outputs": [
+    {"label": "Active learning touches", "terms": {"examples": 1, "practice": 1}, "precision": 0}
+  ]
+}
+</script>
+
+<div data-tabs>
+  <div role="tablist" aria-label="Example comparison">
+    <button class="btn" type="button" role="tab" aria-controls="tab-acquire">Acquire</button>
+    <button class="btn" type="button" role="tab" aria-controls="tab-retrieve">Retrieve</button>
+  </div>
+  <div id="tab-acquire" role="tabpanel"><p>Clear explanation reduces unnecessary load while knowledge is new.</p></div>
+  <div id="tab-retrieve" role="tabpanel"><p>Effortful recall builds durable, flexible knowledge after acquisition.</p></div>
+</div>
+
+<h2 id="capabilities">Optional capabilities</h2>
+<h3>Mermaid</h3>
+<pre data-mermaid>
+flowchart LR
+  Research --&gt; Synthesis
+  Synthesis --&gt; Lesson
+</pre>
+
+<h3>Chart.js</h3>
+<div class="chart-frame">
+  <canvas data-chart data-source="chart-data" role="img" aria-label="Example retention chart"></canvas>
+</div>
+<script type="application/json" id="chart-data">
+{
+  "type": "line",
+  "data": {
+    "labels": ["Day 1", "Day 3", "Day 7"],
+    "datasets": [{"label": "Illustrative recall", "data": [100, 72, 58]}]
+  },
+  "options": {
+    "scales": {
+      "x": {"title": {"display": true, "text": "Review day"}},
+      "y": {"title": {"display": true, "text": "Recall (illustrative %)"}}
+    },
+    "plugins": {"title": {"display": true, "text": "Illustrative recall without review"}}
+  }
+}
+</script>
+
+<h3>KaTeX</h3>
+<p data-katex="display">S_{n} = S_{0}(1-r)^{n}</p>
+
+<h3>Cytoscape</h3>
+<div data-cytoscape data-source="graph-data" role="img" aria-label="Research to lesson dependency graph"></div>
+<script type="application/json" id="graph-data">
+{
+  "elements": [
+    {"data": {"id": "sources", "label": "Sources"}},
+    {"data": {"id": "brief", "label": "Research brief"}},
+    {"data": {"id": "lesson", "label": "Lesson"}},
+    {"data": {"source": "sources", "target": "brief"}},
+    {"data": {"source": "brief", "target": "lesson"}}
+  ]
+}
+</script>
+
 <h2 id="quiz">Quiz</h2>
 <p>The quiz is self-serve: instant feedback, an explanation after each answer, and a score at the end. The score is for the student only.</p>
-<div id="quiz"></div>
+<div data-quiz data-source="quiz-data"></div>
 
 <!-- QUIZ-DATA — lesson-specific quiz questions as JSON.
      `answer` is the index of the correct option in authored order;
@@ -582,146 +844,7 @@ figcaption {
 <!-- /CONTENT — end of replaceable demo content -->
 
 </main>
-<script>
-/* ============================================================
-   Lesson interactions — dependency-free. Copy only the snippets
-   a lesson uses. Class names match the design system above.
-   ============================================================ */
-
-/* ---- Quiz engine ----------------------------------------------------
-   One question at a time → click an option → instant feedback +
-   explanation reveal → Next → score summary at the end.
-
-   Markup:  <div id="quiz"></div> plus a
-            <script type="application/json" id="quiz-data"> block in the
-            content area holding the questions. `answer` is the index of
-            the correct option in authored order.
-   Options are shuffled at render time, so the authored answer index
-   carries no positional signal.
-
-   This script is generic — lessons customize the quiz by editing only
-   the quiz-data JSON, never this engine.
-*/
-(function () {
-  const root = document.getElementById("quiz");
-  const data = document.getElementById("quiz-data");
-  if (!root || !data) return;
-  const QUIZ = JSON.parse(data.textContent);
-  let current = 0;
-  let correct = 0;
-
-  // Shuffle each question's options once (Fisher–Yates) so the correct
-  // answer lands in a random position regardless of authoring order.
-  QUIZ.forEach(function (item) {
-    const order = item.options.map(function (_, i) { return i; });
-    for (let i = order.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = order[i]; order[i] = order[j]; order[j] = tmp;
-    }
-    item.options = order.map(function (i) { return item.options[i]; });
-    item.answer = order.indexOf(item.answer);
-  });
-
-  function render() {
-    if (current >= QUIZ.length) {
-      root.innerHTML =
-        '<div class="card"><div class="card-title">Score: ' +
-        correct + " / " + QUIZ.length +
-        "</div><p class=\"muted\">Retake any questions you missed by reloading the page.</p></div>";
-      return;
-    }
-    const item = QUIZ[current];
-    root.innerHTML = "";
-
-    const progress = document.createElement("p");
-    progress.className = "muted";
-    progress.textContent = "Question " + (current + 1) + " of " + QUIZ.length;
-    root.appendChild(progress);
-
-    const question = document.createElement("h3");
-    question.textContent = item.q;
-    root.appendChild(question);
-
-    item.options.forEach(function (text, i) {
-      const btn = document.createElement("button");
-      btn.className = "quiz-option";
-      btn.textContent = String.fromCharCode(65 + i) + ". " + text;
-      btn.addEventListener("click", function () { answer(i); });
-      root.appendChild(btn);
-    });
-  }
-
-  function answer(picked) {
-    const item = QUIZ[current];
-    const options = root.querySelectorAll(".quiz-option");
-    options.forEach(function (btn, i) {
-      btn.disabled = true;
-      if (i === item.answer) btn.classList.add("is-correct");
-      else if (i === picked) btn.classList.add("is-incorrect");
-    });
-    if (picked === item.answer) correct++;
-
-    const explain = document.createElement("div");
-    explain.className = "quiz-explanation";
-    explain.innerHTML = "<strong>Why:</strong> " + item.explain;
-    root.appendChild(explain);
-
-    const next = document.createElement("button");
-    next.className = "btn btn-primary";
-    next.textContent = current + 1 < QUIZ.length ? "Next question" : "See score";
-    next.addEventListener("click", function () { current++; render(); });
-    root.appendChild(next);
-  }
-
-  render();
-})();
-
-/* ---- Walkthrough stepper --------------------------------------------
-   Shows one .step at a time with Back / Next controls and a progress
-   readout.
-
-   Markup:  <div id="stepper">
-              <div class="step">Step one…</div>
-              <div class="step">Step two…</div>
-              <div class="stepper-controls">
-                <button class="btn" data-dir="-1">Back</button>
-                <span class="stepper-progress"></span>
-                <button class="btn btn-primary" data-dir="1">Next</button>
-              </div>
-            </div>
-*/
-(function () {
-  const stepper = document.getElementById("stepper");
-  if (!stepper) return;
-  const steps = stepper.querySelectorAll(".step");
-  const progress = stepper.querySelector(".stepper-progress");
-  const buttons = stepper.querySelectorAll("[data-dir]");
-  let index = 0;
-
-  function show() {
-    steps.forEach(function (s, i) { s.hidden = i !== index; });
-    progress.textContent = "Step " + (index + 1) + " of " + steps.length;
-    buttons.forEach(function (btn) {
-      const dir = Number(btn.dataset.dir);
-      btn.disabled = index + dir < 0 || index + dir >= steps.length;
-    });
-  }
-
-  buttons.forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      index += Number(btn.dataset.dir);
-      show();
-    });
-  });
-
-  show();
-})();
-</script>
-<script>
-/* ---- highlight.js (vendored, see templates/vendor/VERSIONS.md) ----
-   The placeholder line below is replaced by templates/new-lesson.sh. */
-// HLJS-JS
-</script>
-<script>if (window.hljs) hljs.highlightAll();</script>
+<!-- GENERATED-RUNTIME:START -->
+<!-- GENERATED-RUNTIME:END -->
 </body>
 </html>

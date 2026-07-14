@@ -4,9 +4,15 @@ A personal learning environment where an AI agent acts as a teacher. Each topic 
 
 ## How it works
 
-The teaching protocol lives in `.cursor/skills/teach/`. The agent interviews you, writes a syllabus, then teaches one section at a time: a `lesson-builder` subagent researches the section and produces a beautiful standalone HTML lesson (content, visuals, practice, and an embedded quiz with cited sources), and the agent teaches it interactively in chat. Quizzes are self-scored inside the lesson — your score is yours alone. Works for any subject, not just coding.
+The teaching protocol and canonical state templates live in
+`.cursor/skills/teach/`. Research agents gather
+evidence from distinct angles; the teacher reconciles it and maintains the source
+ledger and research briefs. `lesson-builder` turns a completed brief into a
+standalone interactive lesson, which the teacher works through with you in chat.
+Quiz scores stay inside the page and are never recorded.
 
-Chat is ephemeral; the syllabus checkboxes and the journal carry all state.
+Chat is ephemeral; the syllabus, journal, source ledger, and research briefs
+carry state.
 
 ## Getting started
 
@@ -24,11 +30,28 @@ Open Cursor in this repo and say:
 
 ```
 templates/
-├── lesson.html             # design system + quiz/stepper JS, the base for every lesson
-└── vendor/                 # highlight.js (inlined only into lessons with code)
+├── lesson.html             # canonical lesson design system
+├── COMPONENTS.md           # declarative interactions and optional capabilities
+├── component-gallery.html  # built visual and interaction reference
+├── runtime/                # core runtime + Mermaid/Chart/KaTeX/Cytoscape adapters
+└── vendor/                 # vendored highlight.js
 
 topics/<topic-slug>/
-├── syllabus.md             # goal + checkbox sections (= progress)
-├── journal.md              # student profile + dated teaching log + weak spots
+├── syllabus.md             # mission, success criteria, and taught sections
+├── journal.md              # profile, evidence, log, and weak spots
+├── sources.md              # deduplicated source ledger with stable IDs
+├── research/               # topic overview and section briefs
 └── lessons/<n>-<slug>.html # one per section: lecture, visuals, practice, quiz, references
 ```
+
+## Lesson tooling
+
+```sh
+npm install
+npm run lesson:new -- topics/<slug>/lessons/<n>-<slug>.html
+npm run lesson:build -- topics/<slug>/lessons/<n>-<slug>.html
+npm run check
+```
+
+The build bundles only capabilities used by the lesson and inlines all runtime
+assets, so lessons work from `file://` without network requests.
