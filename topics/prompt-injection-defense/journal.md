@@ -1,27 +1,29 @@
-# Learning Journal — Prompt Injection Security for LLM Applications
+# Learning Journal — Prompt Injection Defense
 
 ## Student Profile
-- **Background**: Builds LLM and agent applications
-- **Goal**: Design secure LLM applications, audit existing systems, red-team them defensively, and develop broad conceptual understanding
-- **Constraints**: No fixed deadline
-- **Style**: Practical and technical, with code and architecture
-- **Depth**: Deep enough to make and defend production security decisions
+- **Background**: Advanced — has deployed production LLM systems and dealt with security concerns
+- **Goal**: Comprehensive understanding of prompt injection attack and defense landscape
+- **Constraints**: None stated
+- **Depth**: Full theory + practice with hands-on exercises across all LLM application types (RAG, agents, chatbots)
 
 ## Established Knowledge
-### LLM application development
-- **Evidence**: The student explicitly disclosed that they already build LLM and agent applications.
-- **Implication**: Use realistic RAG, tool, memory, MCP, and agent architectures without reteaching basic LLM integration.
+- None yet assessed
 
 ## Log
-### 2026-07-05 — Earlier attack-surface lesson
-- **Covered**: Root cause, direct and indirect injection, context provenance, agent tool blast radius, confused-deputy behavior, Slack AI, and EchoLeak.
-- **Evidence**: None. The historical session recorded coverage but no demonstration of understanding.
-- **Next**: Revisit these ideas in the refreshed course and probe understanding rather than assuming mastery.
+### 2025-07-22 — Discovery
+- **Covered**: Topic scoping, student profiling, research synthesis
+- **Evidence**: Student self-assessed as advanced with production LLM security experience
+- **Next**: Begin Section 1 — The Confused Deputy
 
-### 2026-07-14 — Course discovery and syllabus design
-- **Covered**: Learning goals, current background, preferred depth, and pacing constraints.
-- **Evidence**: The student identified experience building LLM applications and requested practical technical depth across design, auditing, defensive red teaming, and conceptual foundations.
-- **Next**: Get syllabus sign-off, then prepare and teach Section 1.
+### 2025-07-22 — Section 1: The Confused Deputy
+- **Covered**: Hardy's confused deputy, LLMs as confused deputies, why parameterized prompts don't exist (SQL injection contrast), lethal trifecta (Willison 2025), EchoLeak case study, OWASP LLM01:2025 + interactions with LLM05/06/07, OpenAI "phishing for AIs" framing, historical timeline (Goodside → Greshake → trifecta)
+- **Evidence**: Student correctly identified authority misuse as the core deputy problem, understood XML delimiters are probabilistic not structural, chose HITL as cheapest trifecta leg to break in the code review bot scenario — all answers immediate and confident
+- **Next**: Section 2 — Attack Taxonomy: Direct & Indirect
+
+## Established Knowledge
+- **Confused deputy**: Solid grasp — immediately identified authority misuse as the distinguishing factor
+- **Code/data conflation**: Understands that LLM delimiter defenses are probabilistic, not structural like SQL parameterization
+- **Lethal trifecta**: Can apply to novel scenarios — correctly identified HITL on outbound comms as cheapest mitigation
 
 ## Weak Spots
-- None observed yet.
+- None identified yet
