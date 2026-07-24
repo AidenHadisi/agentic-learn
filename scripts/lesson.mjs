@@ -67,6 +67,20 @@ if (command === "new") {
 		process.exit(1);
 	}
 
+	const mdxSource = fs.readFileSync(resolved, "utf8");
+	const usedComponents = [...new Set(
+		(mdxSource.match(/<([A-Z]\w*)/g) || []).map(m => m.slice(1))
+	)];
+	if (usedComponents.length > 0) {
+		const importSection = mdxSource.split(/\n(?=[^i]|i[^m])/)[0] || "";
+		const missing = usedComponents.filter(c => !importSection.includes(c));
+		if (missing.length > 0) {
+			console.error(`\nBuild failed: components used but not imported: ${missing.join(", ")}`);
+			console.error(`Add to the top of your MDX:\n  import { ${missing.join(", ")} } from "@learn/components";\n`);
+			process.exit(1);
+		}
+	}
+
 	const outHtml = resolved.replace(/\.mdx$/, ".html");
 	const outDir = path.dirname(outHtml);
 

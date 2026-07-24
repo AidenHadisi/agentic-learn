@@ -1,229 +1,270 @@
-import { Callout, Quiz, Stepper, Step, Reveal, Playground, Tabs, Tab, Chart, CodeBlock } from "@learn/components";
+import { Callout, Quiz, Stepper, Step, Sources } from "@learn/components";
 
 # Descriptive Statistics
 
-<div className="lesson-meta">Summarize data with center, spread, and shape — and connect each measure to ML</div>
+Every dataset tells a story, but the story changes depending on how you summarize it. A company reports "average salary $95k" while employees insist the typical pay is $62k — who's lying? Neither. They're using different summaries that respond differently to the shape of the data. This lesson is about choosing the right summary, understanding why it works, and seeing how the same ideas drive the loss functions you'll meet in machine learning.
 
-## Why This Matters
+We'll use two small datasets throughout to make every claim concrete:
 
-Every data science workflow starts with **describing your data**. Before you build a model, run an experiment, or make a business decision, you need to answer: what's typical? how spread out is it? is it symmetric or skewed? The summary statistics you choose determine the story you tell — and the wrong choice can be misleading.
+**Dataset A** (exam scores, clean): `72, 75, 78, 80, 82, 85, 88`
+
+**Dataset B** (same scores, one typo): `72, 75, 78, 80, 82, 85, 880`
+
+One corrupted value. Watch what it does to each measure.
 
 ## Measures of Center
 
-### Mean
+A measure of center answers: "If I had to summarize this pile of numbers with a single value, what would best represent the typical observation?"
 
-The arithmetic mean is the sum of all values divided by the count:
+### The Mean
+
+The arithmetic mean is the balance point of the data — the unique value where the signed deviations cancel out. Imagine each data point as a weight on a number line; the mean is where you'd place the fulcrum to keep the board level.
 
 $$\bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i$$
 
-The mean is the **balance point** of the distribution — the value that minimizes the sum of squared deviations. This is exactly why **MSE (Mean Squared Error)** uses the mean as its target: minimizing $\sum(x_i - c)^2$ gives you $c = \bar{x}$.
+<Stepper>
+<Step>Sum all values in Dataset A: $72 + 75 + 78 + 80 + 82 + 85 + 88 = 560$</Step>
+<Step>Divide by $n = 7$: $\bar{x} = 560 / 7 = 80$</Step>
+<Step>Check the balance: deviations from 80 are $-8, -5, -2, 0, +2, +5, +8$. Sum = 0. ✓</Step>
+</Stepper>
 
-### Median
+Now Dataset B: $\bar{x} = 1352 / 7 \approx 193$. One typo dragged the "typical" score from 80 to 193 — a value no real student achieved. The mean uses every value's *magnitude*, so one extreme observation can hijack it.
 
-The middle value when data is sorted. For even $n$, average the two middle values.
+### The Median
 
-The median minimizes the sum of **absolute** deviations: $\sum|x_i - c|$. This is why **MAE (Mean Absolute Error)** is more robust to outliers — its optimal prediction is the median, not the mean.
+The median balances *counts* instead of distances: half the observations fall below, half above. You sort the data and pick the middle value (or average the two middle values for even $n$).
 
-### Mode
+Dataset A sorted: `72, 75, 78, 80, 82, 85, 88` → middle position $(7+1)/2 = 4$ → median = **80**.
 
-The most frequent value. Primarily useful for categorical data or identifying peaks in multimodal distributions.
+Dataset B sorted: `72, 75, 78, 80, 82, 85, 880` → median = **80**. Unchanged.
 
-<Callout variant="key">
-The mean minimizes squared error (MSE). The median minimizes absolute error (MAE). This is why your choice of loss function in ML implicitly chooses which "center" your model predicts.
-</Callout>
+The median doesn't care *how far* the extreme point went — only whether it crossed the middle. This is what "robust" means informally: the bulk of the data controls the answer, not the extremes.
 
-### Worked Example
+### The Trimmed Mean
 
-Dataset: salaries at a 7-person startup (in $k): **45, 50, 52, 55, 58, 62, 310**
+A trimmed mean splits the difference. Sort the data, discard a fixed fraction $\alpha$ from each tail, then average what remains. With $\alpha = 0$ you get the mean; as $\alpha \to 0.5$ you approach the median.
 
-- **Mean**: $(45+50+52+55+58+62+310)/7 = 632/7 ≈ \$90.3k$
-- **Median**: 4th value = **$55k**
-- The CEO's $310k salary pulls the mean up by $35k. The median is unaffected.
+For our 7-point datasets, trimming one value from each end (~14%) keeps `75, 78, 80, 82, 85`:
 
-<Callout variant="warn">
-When data is right-skewed (income, home prices, latency), the mean overstates what's "typical." Always check both — the gap between mean and median signals skewness.
+- Dataset A trimmed mean: $(75+78+80+82+85)/5 = 80$
+- Dataset B trimmed mean: same five values → **80**. The outlier was trimmed away.
+
+Trimmed means are widely used in practice — Olympic judging drops the highest and lowest scores, and some inflation measures use trimmed-mean CPI.
+
+### When to Use Which
+
+<Callout variant="key" title="Pairing rule">
+Use the **mean** when data is symmetric and clean — it's maximally efficient under normality. Use the **median** when data is skewed or contaminated — it honestly reports the typical case. Use a **trimmed mean** (10–20%) when you want a compromise: nearly as efficient as the mean on clean data, but protected against mild contamination.
 </Callout>
 
 ## Measures of Spread
 
+Center alone isn't enough. Two datasets can share the same mean and median but feel completely different if one is tightly clustered and the other is wildly dispersed. Spread measures tell you how far observations typically wander from the center.
+
 ### Variance and Standard Deviation
 
-**Population variance:**
-$$\sigma^2 = \frac{1}{N}\sum_{i=1}^{N}(x_i - \mu)^2$$
+Variance averages the *squared* distances from the mean. Squaring serves two purposes: it eliminates sign (so deviations don't cancel) and it penalizes large deviations disproportionately — a point 10 units away contributes 100, while a point 2 units away contributes only 4.
 
-**Sample variance** (Bessel's correction — divides by $n-1$ to be unbiased):
 $$s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i - \bar{x})^2$$
 
-**Standard deviation** is $s = \sqrt{s^2}$ — it's in the same units as your data, making it interpretable as "the typical distance from the mean."
+The $n-1$ denominator (Bessel's correction) makes the sample variance an unbiased estimator of the population variance — with $n$ you'd systematically underestimate.
 
-### Why $n-1$?
+Standard deviation is $s = \sqrt{s^2}$, restoring the original units. A rough interpretation: how far a typical observation sits from the mean.
 
-When you estimate variance from a sample, using $\bar{x}$ instead of the true $\mu$ systematically underestimates spread (the deviations from your sample mean are always smaller than from the true mean). Dividing by $n-1$ corrects this bias.
+<Stepper>
+<Step>Dataset A: deviations from 80 are $-8, -5, -2, 0, +2, +5, +8$</Step>
+<Step>Squared deviations: $64, 25, 4, 0, 4, 25, 64$. Sum = 186</Step>
+<Step>$s^2 = 186/6 = 31$, so $s \approx 5.6$</Step>
+</Stepper>
+
+Dataset B? The deviation of 880 from the mean (≈193) is about 687, whose square is ~472,000. The variance explodes. Like the mean, variance and SD have **zero breakdown point** — one wild observation can make them arbitrarily large.
 
 ### IQR (Interquartile Range)
 
-$$\text{IQR} = Q_3 - Q_1$$
+The IQR is the width of the middle 50%: $IQR = Q_3 - Q_1$. It pairs naturally with the median, just as SD pairs with the mean.
 
-The range of the middle 50% of data. Completely immune to outliers — making it the robust counterpart to standard deviation.
+For Dataset A: $Q_1 \approx 75$, $Q_3 \approx 85$, $IQR \approx 10$.
+For Dataset B: the middle values are the same → $IQR \approx 10$. Robust.
 
-<Tabs>
-	<Tab label="Use SD when...">
-		- Data is roughly symmetric (Normal-ish)
-		- You need it for z-scores, confidence intervals, or feature scaling
-		- You're computing standard error ($SE = s/\sqrt{n}$)
-	</Tab>
-	<Tab label="Use IQR when...">
-		- Data is skewed or has outliers
-		- You're building boxplots or detecting outliers ($< Q_1 - 1.5 \cdot IQR$ or $> Q_3 + 1.5 \cdot IQR$)
-		- You want a robust summary that won't mislead
-	</Tab>
-</Tabs>
+The IQR also powers **Tukey's outlier fences**: any point below $Q_1 - 1.5 \cdot IQR$ or above $Q_3 + 1.5 \cdot IQR$ gets flagged. In Dataset B, the upper fence is about $85 + 15 = 100$, flagging 880 as an outlier.
 
-### ML Connection: Feature Scaling
+### MAD (Median Absolute Deviation)
 
-**Standardization** (z-score normalization) uses the mean and SD:
-$$z_i = \frac{x_i - \bar{x}}{s}$$
+The MAD uses the median twice — first as center, then to summarize absolute deviations:
 
-This puts features on a common scale — critical for gradient descent, k-NN, SVM, PCA, and any distance-based method. Without it, high-magnitude features dominate.
+$$MAD = \text{median}(\lvert x_i - \tilde{x} \rvert)$$
+
+Dataset A: absolute deviations from median 80 are `8, 5, 2, 0, 2, 5, 8`. Sorted: `0, 2, 2, 5, 5, 8, 8`. Median = **5**.
+
+Dataset B: absolute deviations from 80 are `8, 5, 2, 0, 2, 5, 800`. Sorted median = **5**. Unchanged.
+
+For comparison to SD under normality, multiply by 1.4826: $1.4826 \times 5 \approx 7.4$ (same ballpark as $s \approx 5.6$ on clean data, but impervious to the outlier).
+
+<Callout variant="warn" title="Naming trap">
+"MAD" sometimes means *mean* absolute deviation in software (e.g., MATLAB's `mad` function defaults to this). Always check — the *median* absolute deviation is far more robust.
+</Callout>
+
+## Robustness and Breakdown
+
+### Breakdown Point
+
+How much contamination can a measure withstand before it gives an arbitrarily wrong answer? This is the **breakdown point** — the smallest fraction of data you can replace with garbage before the estimator breaks.
+
+| Measure | Breakdown point | Why |
+|---------|----------------|-----|
+| Mean, SD, Range | $\approx 0\%$ (exactly $1/n$) | One extreme value → arbitrarily bad |
+| $\alpha$-trimmed mean | $\alpha$ | Protected by trimming fraction |
+| IQR | $\approx 25\%$ | Must corrupt an entire quartile |
+| Median, MAD | $\approx 50\%$ | Maximum possible for any location/scale estimator |
+
+The 50% breakdown of the median means you'd need to corrupt *more than half* the data to force it wherever you want. That's a fundamental limit — no translation-equivariant estimator can do better.
+
+### The Trade-off
+
+Robustness isn't free. Under perfectly normal data, the median is only ~64% as efficient as the mean (its standard error is larger by a factor of $\sqrt{\pi/2}$). You're paying insurance against contamination. The trimmed mean and Huber estimators exist precisely to navigate this trade-off — nearly as efficient as the mean when data is clean, while staying sane when it isn't.
 
 ## Shape: Skewness and Kurtosis
 
 ### Skewness
 
-Measures asymmetry of the distribution:
+Skewness quantifies asymmetry — specifically, which tail is longer. The name follows the **tail**, not the pile:
 
-$$\text{skewness} = \frac{1}{n}\sum\left(\frac{x_i - \bar{x}}{s}\right)^3$$
+- **Right-skewed** (positive): long right tail, mean > median. Examples: income, web traffic, session duration.
+- **Left-skewed** (negative): long left tail, mean < median. Examples: easy exam scores, age at retirement.
 
-- **Positive skew** (right tail): mean > median. Examples: income, revenue, page load times.
-- **Negative skew** (left tail): mean < median. Examples: exam scores with a hard ceiling.
-- **Zero**: symmetric (Normal, uniform).
+Consider ten incomes (in $k): `32, 35, 38, 40, 42, 45, 48, 55, 62, 180`.
+
+Mean = $57.7k$, median = $43.5k$. The $180k earner drags the mean right. Skewness $G_1 \approx 2.9$ (strongly positive). Reporting the "average income" overstates what a typical person earns by $14k.
+
+The formula (Fisher–Pearson) is the average cubed standardized deviation:
+
+$$G_1 = \frac{n}{(n-1)(n-2)}\sum\left(\frac{x_i - \bar{x}}{s}\right)^3$$
+
+Cubing preserves sign — negative deviations contribute negatively, positive contribute positively — so the balance of tail lengths emerges.
 
 ### Kurtosis
 
-Measures **tail heaviness**, not peakedness (a common misconception):
+Kurtosis measures **tail heaviness** — how prone a distribution is to producing extreme values.
 
-$$\text{excess kurtosis} = \frac{1}{n}\sum\left(\frac{x_i - \bar{x}}{s}\right)^4 - 3$$
-
-- **Positive excess kurtosis**: heavier tails than Normal → more extreme outliers likely (financial returns, fraud signals)
-- **Negative excess kurtosis**: lighter tails → bounded data (uniform distribution)
-
-<Callout variant="tip">
-When you see positive skew in your data (revenue, latency, session duration), a **log transform** often symmetrizes it. This helps models that assume normality and stabilizes variance for regression.
+<Callout variant="warn" title="Common myth">
+Kurtosis does **not** measure "peakedness." That interpretation, dating to Pearson (1905), was formally debunked by Westfall (2014). The statistic is dominated by values far from the center, not near it.
 </Callout>
 
-## Key Rules of Thumb
+The formula raises standardized deviations to the **fourth** power. Why does this measure tails? Because $Z^4$ amplifies extremes explosively:
 
-### The Empirical Rule (68-95-99.7)
+| $\lvert Z \rvert$ | $Z^4$ |
+|---|---|
+| 0.5 | 0.06 |
+| 1 | 1 |
+| 2 | 16 |
+| 3 | 81 |
 
-For approximately Normal data:
-- ~68% of values fall within $\pm 1$ SD of the mean
-- ~95% within $\pm 2$ SD
-- ~99.7% within $\pm 3$ SD
+A point 3 standard deviations out contributes **81×** more to kurtosis than one at 1 SD. The center is irrelevant; outliers dominate.
 
-### Chebyshev's Inequality (distribution-free)
+**Excess kurtosis** subtracts 3 (the normal distribution's value) so that zero means "normal-like tails":
+- Excess > 0 (**leptokurtic**): heavier tails than normal — more extreme outliers than expected. Examples: financial returns, Cauchy, Laplace.
+- Excess < 0 (**platykurtic**): lighter tails — fewer extremes. Example: uniform distribution.
 
-For **any** distribution, at least $1 - 1/k^2$ of data falls within $k$ standard deviations:
-- $k=2$: at least 75% within $\pm 2$ SD
-- $k=3$: at least 89% within $\pm 3$ SD
+## The ML Connection: Loss Functions Choose Your Center
 
-This is weaker than the empirical rule but requires **no assumptions about shape**.
+Here's the insight that turns descriptive statistics from a dry review into something you'll use every time you train a model. When you fit even the simplest model — predicting a single constant $w$ for all observations — your choice of **loss function** determines which summary statistic you recover.
 
-## Interactive: How Outliers Shift the Mean
+### Squared Loss → Mean
 
-<Playground
-	controls={[
-		{ id: "outlier", label: "Outlier value", min: 50, max: 500, step: 10, value: 50 },
-	]}
-	outputs={[
-		{ label: "Mean (with outlier)", terms: { outlier: 0.1667 }, intercept: 41.67, precision: 1, unit: "" },
-		{ label: "Median (always)", terms: { outlier: 0 }, intercept: 45, precision: 0, unit: "" },
-	]}
-/>
+If you minimize mean squared error:
 
-Drag the outlier up and watch the mean chase it while the median stays put. This is exactly why robust statistics (median, IQR) matter for skewed real-world data.
+$$L(w) = \frac{1}{n}\sum_{i=1}^{n}(y_i - w)^2$$
 
-## Choosing Your Summary
+Take the derivative and set to zero:
 
-<Chart
-	type="bar"
-	data={{
-		labels: ["Symmetric data", "Skewed data", "Outlier-heavy"],
-		datasets: [
-			{ label: "Mean + SD (appropriate)", data: [1, 0, 0], backgroundColor: "#4ade80" },
-			{ label: "Median + IQR (appropriate)", data: [0, 1, 1], backgroundColor: "#60a5fa" },
-		],
-	}}
-	options={{
-		indexAxis: "y",
-		plugins: { title: { display: true, text: "Which summary to use?" } },
-		scales: { x: { display: false } },
-	}}
-/>
+$$\frac{dL}{dw} = -\frac{2}{n}\sum(y_i - w) = 0 \implies \sum(y_i - w) = 0 \implies w^* = \bar{y}$$
 
----
+The optimal constant prediction under squared loss *is* the mean. The balance condition (signed residuals sum to zero) is precisely what defines the mean.
+
+### Absolute Loss → Median
+
+If you minimize mean absolute error:
+
+$$L(w) = \frac{1}{n}\sum_{i=1}^{n}\lvert y_i - w \rvert$$
+
+The subgradient with respect to $w$ counts how many points are above vs. below $w$. Setting it to zero gives:
+
+$$\#\{y_i < w\} = \#\{y_i > w\}$$
+
+Equal counts on each side — that's the **median**.
+
+<Stepper>
+<Step>Squared loss penalizes a residual of 10 by $10^2 = 100$. A residual of 100 costs $100^2 = 10{,}000$. Outliers dominate.</Step>
+<Step>Absolute loss penalizes a residual of 10 by 10, and 100 by 100. Outlier influence is linear, not quadratic.</Step>
+<Step>MSE's optimal constant must please every point (balance magnitudes) → **mean**. MAE's optimal constant only needs to split counts evenly → **median**.</Step>
+</Stepper>
+
+### Huber Loss → The Best of Both
+
+In practice you often want MSE's smooth gradients near zero (fast convergence) without letting outliers wreck training. Huber loss achieves this with a threshold $\delta$:
+
+$$L_\delta(e) = \begin{cases} \frac{1}{2}e^2 & \lvert e \rvert \le \delta \\ \delta(\lvert e \rvert - \frac{1}{2}\delta) & \lvert e \rvert > \delta \end{cases}$$
+
+Small errors are squared (like MSE); large errors are treated linearly (like MAE). The optimizer of Huber loss lives between the mean and median — conceptually a *soft* version of trimming. As $\delta \to \infty$ you recover the mean; as $\delta \to 0$ you approach the median.
+
+<Callout variant="tip" title="The unifying picture">
+Mean, trimmed mean, Huber M-estimate, and median form a continuum from "trust every point equally" to "only trust ranks." Choosing where to sit on this spectrum is one of the most fundamental modeling decisions you'll make — and it starts right here with descriptive statistics.
+</Callout>
 
 ## Practice
 
-Compute by hand for this dataset: **3, 7, 7, 12, 15, 18, 35**
+1. A website reports page-load times (in ms): `120, 135, 142, 155, 160, 168, 175, 190, 210, 4200`. Compute the mean, median, and IQR. Which summary would you report to stakeholders as "typical performance"? Why?
 
-1. Mean, median, and mode
-2. Sample variance and standard deviation (use $n-1$)
-3. Is the data skewed? Which direction? How can you tell from the mean vs median?
+2. You're building a regression model to predict house prices. Your training data has several mansions priced 10× above the neighborhood median. Without any transformation, which loss function (MSE, MAE, or Huber) would you choose and why? What does each loss implicitly "want" the model to predict for a neighborhood with one mansion among modest homes?
 
-<Reveal prompt="Check your answers">
-- **Mean**: $(3+7+7+12+15+18+35)/7 = 97/7 ≈ 13.86$
-- **Median**: 12 (4th value)
-- **Mode**: 7 (appears twice)
-- **Sample variance**: deviations from 13.86: $(-10.86, -6.86, -6.86, -1.86, 1.14, 4.14, 21.14)$, squared sum ÷ 6 ≈ $107.14$
-- **SD**: $\sqrt{107.14} ≈ 10.35$
-- **Skew**: Mean (13.86) > Median (12) → right-skewed (the 35 pulls the mean up)
-</Reveal>
+3. Two datasets have the same mean and SD, but Dataset X has excess kurtosis +5 while Dataset Y has excess kurtosis −0.5. If you apply the empirical rule (68–95–99.7) to both, for which dataset will it badly mislead you? What would you expect to see in a box plot of each?
 
-## Quiz
+4. A financial analyst reports "average daily return = 0.1%, standard deviation = 2%." The return distribution has skewness −0.8 and excess kurtosis +6. Explain why the SD understates the risk of large losses.
 
 <Quiz questions={[
 	{
-		q: "A dataset of web page load times has mean = 3.2s and median = 1.8s. What does this tell you?",
-		options: [
-			"The data is left-skewed",
-			"The data is right-skewed — some very slow loads pull the mean up",
-			"The data is symmetric — mean and median are just different measures",
-			"There's an error — mean can't be larger than median"
-		],
-		answer: 1,
-		explain: "Mean > median signals right (positive) skew. A few very slow page loads create a long right tail, pulling the mean above the median. This is typical for latency data."
+		q: "You have income data for 1,000 households. The distribution is right-skewed with a few very high earners. Which measure best represents what a 'typical' household earns?",
+		options: ["Mean", "Median", "Standard deviation", "Range"],
+		answer: "Median",
+		explain: "Right skew means the mean is pulled toward the high earners. The median resists this pull and reports the value where half earn more, half earn less — a better 'typical.'"
 	},
 	{
-		q: "Why does sample variance divide by n-1 instead of n?",
+		q: "A single mislabeled data point in your training set has target value 10,000 instead of 100. If you train with MSE loss, what happens to the learned constant prediction compared to MAE loss?",
 		options: [
-			"It's an arbitrary convention with no mathematical basis",
-			"Using the sample mean instead of the true mean systematically underestimates spread; n-1 corrects this bias",
-			"It makes the formula easier to compute",
-			"It only applies when n is odd"
+			"MSE prediction shifts dramatically toward 10,000; MAE prediction barely moves",
+			"Both shift equally",
+			"MAE prediction shifts more because it uses absolute values",
+			"Neither shifts because one point can't affect training"
 		],
-		answer: 1,
-		explain: "Deviations from the sample mean are always ≤ deviations from the true mean (since the sample mean minimizes squared deviations). Dividing by n-1 (Bessel's correction) makes s² an unbiased estimator of σ²."
+		answer: "MSE prediction shifts dramatically toward 10,000; MAE prediction barely moves",
+		explain: "MSE's optimal constant is the mean (breakdown ≈ 0%); one extreme point shifts it heavily. MAE's optimal constant is the median (breakdown ≈ 50%); it only cares about rank position."
 	},
 	{
-		q: "In ML, if you minimize Mean Absolute Error (MAE), your model's predictions converge to the:",
+		q: "A distribution has excess kurtosis of +8. What does this tell you?",
 		options: [
-			"Mean of the target variable",
-			"Median of the target variable",
-			"Mode of the target variable",
-			"Standard deviation of the target variable"
+			"The distribution has much heavier tails than a normal — extreme values occur more often than expected",
+			"The distribution is very peaked in the center",
+			"The distribution is right-skewed",
+			"The standard deviation is very large"
 		],
-		answer: 1,
-		explain: "MAE = Σ|yᵢ - ŷ| is minimized when ŷ equals the median. MSE is minimized at the mean. This is why MAE-trained models are more robust to outliers in the target."
+		answer: "The distribution has much heavier tails than a normal — extreme values occur more often than expected",
+		explain: "Kurtosis measures tail heaviness, not peakedness. High excess kurtosis means the fourth-power moment is dominated by extreme values — expect more outliers than a normal distribution would produce."
 	},
 	{
-		q: "You have a feature with values ranging from 0 to 1,000,000 alongside features ranging 0-1. Before running k-NN, you should:",
-		options: [
-			"Do nothing — the algorithm handles scale differences",
-			"Standardize all features (subtract mean, divide by SD) so they contribute equally to distances",
-			"Remove the large-scale feature entirely",
-			"Take the log of all features"
-		],
-		answer: 1,
-		explain: "Distance-based methods (k-NN, SVM, k-means) are dominated by high-magnitude features unless you standardize. z-score normalization (using mean and SD) puts all features on a comparable scale."
-	},
+		q: "Which measure of spread has a breakdown point of approximately 50%?",
+		options: ["Standard deviation", "Range", "IQR", "MAD (median absolute deviation)"],
+		answer: "MAD (median absolute deviation)",
+		explain: "MAD uses the median twice (of absolute deviations from the median), inheriting the median's ~50% breakdown point. IQR breaks at ~25%. SD and range break at a single observation."
+	}
+]} />
+
+<Sources list={[
+	{ author: "NIST", year: "2012", title: "Measures of Location", url: "https://www.itl.nist.gov/div898/handbook/eda/section3/eda351.htm" },
+	{ author: "NIST", year: "2012", title: "Measures of Scale", url: "https://www.itl.nist.gov/div898/handbook/eda/section3/eda356.htm" },
+	{ author: "Westfall, P.", year: "2014", title: "Kurtosis as Peakedness, 1905–2014. R.I.P.", url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC4321753/" },
+	{ author: "OpenStax", year: "2023", title: "Principles of Data Science — Measures of Center", url: "https://openstax.org/books/principles-data-science/pages/3-1-measures-of-center" },
+	{ author: "Çetinkaya-Rundel & Hardin", year: "2024", title: "Introduction to Modern Statistics — Exploring Numerical Data", url: "https://openintro-ims.netlify.app/explore-numerical" },
+	{ author: "EECS 245", year: "2023", title: "Comparing Loss Functions", url: "https://notes.eecs245.org/introduction-to-supervised-learning/comparing-loss-functions/" },
+	{ author: "Gundersen, G.", year: "2019", title: "Expectations and Medians as Minimizers", url: "https://gregorygundersen.com/blog/2019/10/04/expectation-median-opt/" },
+	{ author: "Scribbr", year: "2023", title: "Skewness — Definition, Examples, Formula", url: "https://www.scribbr.com/statistics/skewness/" }
 ]} />
