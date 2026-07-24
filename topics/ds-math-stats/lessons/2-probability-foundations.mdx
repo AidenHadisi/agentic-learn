@@ -1,0 +1,223 @@
+import { Callout, Quiz, Stepper, Step, Sources } from "@learn/components";
+
+# Probability Foundations
+
+Lesson 1 taught you how to *summarize a fixed list of numbers*. Real work is messier: the numbers haven't arrived yet, a test result just came back, or you need a fair price for a risky bet. Probability is the language for that uncertainty — how to update beliefs when evidence arrives, and how to summarize a *chance process* the way you summarized a dataset.
+
+We'll stay concrete. Counts before formulas. Every identity earns its keep with a worked example.
+
+## Events and Conditional Probability
+
+An **experiment** produces one **outcome** from a **sample space** $S$ (every possibility). An **event** is a subset of $S$ — a collection of outcomes you care about. If you roll a die, $S = \{1,2,3,4,5,6\}$ and "even" is the event $\{2,4,6\}$.
+
+Often you learn something that rules outcomes out. A positive medical test. The word "FREE" in an email. Knowing the first card was a heart. That information doesn't create a new kind of probability — it **restricts the sample space** and **renormalizes** what's left so the remaining mass still sums to 1.
+
+$$P(A \mid B) = \frac{P(A \cap B)}{P(B)} \quad (P(B) > 0)$$
+
+Read it in plain English: *of the probability that lives in $B$, what fraction also lives in $A$?* There is no event called "$A \mid B$". The bar marks *evidence*, not a third set.[¹]
+
+<Stepper>
+<Step>Imagine a fair deck. Draw one card. $P(\text{Ace}) = 4/52 = 1/13$.</Step>
+<Step>Now you're told the card is a **heart**. Throw away the other 39 cards. The restricted world has 13 hearts, including 1 ace.</Step>
+<Step>$P(\text{Ace} \mid \text{Heart}) = 1/13$. Same as unconditional ace probability here — hearts and aces "don't interfere."</Step>
+<Step>Contrast: $P(\text{Heart} \mid \text{Ace}) = 1/4$. Same joint (1 ace of hearts), **different denominator**. Conditioning on aces vs conditioning on hearts are different worlds.</Step>
+</Stepper>
+
+That last contrast is the whole game. $P(A \mid B)$ and $P(B \mid A)$ share a numerator but divide by different totals. Swapping them is the **prosecutor's fallacy** — treating "how likely is this evidence if guilty?" as "how likely is guilt given this evidence?"
+
+Rearranging the definition gives the **multiplication rule**:
+
+$$P(A \cap B) = P(A \mid B)\, P(B)$$
+
+Story: probability of both = probability of the condition × probability of the other *given* the condition.
+
+### Independence
+
+Two events are **independent** when learning one doesn't change the probability of the other:
+
+$$P(A \mid B) = P(A) \quad \Leftrightarrow \quad P(A \cap B) = P(A)P(B)$$
+
+Independence is *not* "can't happen together." That is **mutually exclusive** ($A \cap B = \emptyset$). If two events with positive probability are mutually exclusive, knowing one occurred *forces* the other to probability 0 — they are dependent.
+
+<Callout variant="key" title="Conditioning is restriction">
+$P(A \mid B)$ means: discard everything outside $B$, then ask what fraction of the survivors is in $A$. Always ask "restricted to *which* world?" before you compute.
+</Callout>
+
+## Bayes' Theorem
+
+Bayes is not a new law of nature. It is the definition of conditional probability, flipped to answer the question you actually care about.
+
+You often know $P(\text{evidence} \mid \text{hypothesis})$ — how a test behaves *if* someone is sick, how a word behaves *if* an email is spam. You want $P(\text{hypothesis} \mid \text{evidence})$. Same joint, different denominator:
+
+$$P(H \mid E) = \frac{P(E \mid H)\, P(H)}{P(E)}$$
+
+$P(H)$ is the **prior** (base rate). $P(E \mid H)$ is the **likelihood**. $P(H \mid E)$ is the **posterior**. The denominator $P(E)$ accounts for *every* way the evidence can arise — including false alarms.[²]
+
+Formulas alone hide the trap. Work in **natural frequencies** — counts from one population that keep the base rate intact.[³]
+
+### Worked example: a screening test
+
+Disease prevalence is 1%. The test is 99% sensitive ($P(+ \mid \text{disease}) = 0.99$) with a 5% false-positive rate ($P(+ \mid \text{healthy}) = 0.05$). You test positive. What's $P(\text{disease} \mid +)$?
+
+Most people's gut says "about 95%" or "99%." Let's count.
+
+<Stepper>
+<Step>Imagine **10,000** people. Diseased: $1\%$ → **100**. Healthy: **9,900**.</Step>
+<Step>Of 100 diseased: $99\%$ test + → **99** true positives.</Step>
+<Step>Of 9,900 healthy: $5\%$ test + → **495** false positives.</Step>
+<Step>Total positives: $99 + 495 = 594$. Of those, only 99 are sick.</Step>
+<Step>$P(\text{disease} \mid +) = 99/594 \approx 0.167$ — about **17%**, not 99%.</Step>
+</Stepper>
+
+Why so low? Almost everyone is healthy, so even a small false-positive rate produces a *crowd* of healthy positives that swamp the true cases. The test accuracy numbers $P(+ \mid \text{disease})$ and $P(+ \mid \text{healthy})$ are *not* what a positive patient needs. They need the posterior, which mixes those numbers with prevalence.
+
+Same arithmetic as Bayes:
+
+$$P(\text{disease} \mid +) = \frac{0.99 \times 0.01}{0.99 \times 0.01 + 0.05 \times 0.99} = \frac{0.0099}{0.0594} \approx 0.167$$
+
+<Callout variant="warn" title="Base-rate fallacy">
+Ignoring prevalence and equating "test accuracy" with "chance I have it" is one of the most reliable errors in human reasoning — clinicians make it too.[⁴] Always ask: *of the people who look like this, what fraction actually are?*
+</Callout>
+
+### Bayes in data science (conceptually)
+
+A classifier is the same move. For each class $c$, score $P(c) \times P(\text{features} \mid c)$, then normalize across classes to get $P(c \mid \text{features})$. Class frequencies in training are priors; rare classes (fraud, defects, rare diseases) are base-rate problems wearing different clothes. High recall on a rare class still yields low precision unless false positives are tiny.
+
+## Random Variables, Expectation, and Variance
+
+Conditional probability updates *events*. Often the outcome you care about is a **number**: dollars won, number of clicks, latency in ms. A **random variable** $X$ assigns a number to each outcome.
+
+For a discrete $X$, the **probability mass function** (PMF) $p(x) = P(X = x)$ is the distribution's histogram with bar heights equal to probabilities — the same role frequencies $1/n$ played for a fixed dataset.
+
+### Expected value
+
+The **expected value** reweights each possible value by its probability:
+
+$$E[X] = \sum_x x\, P(X = x)$$
+
+This is the balance point of the PMF — the same "center of mass" idea as the mean, but the weights are probabilities instead of $1/n$.[⁵] It is a property of the *chance process*, not of one sample. It need not be a value $X$ can actually take.
+
+**Fair die.** $X \in \{1,2,3,4,5,6\}$, each with probability $1/6$:
+
+$$E[X] = \frac{1+2+3+4+5+6}{6} = 3.5$$
+
+Never lands on 3.5. Expectation is not "the most likely value" (that's the mode) and not "what usually happens."
+
+**Fair game intuition.** If $G$ is your net gain from a bet, the game is **fair** when $E[G] = 0$. Casinos set payouts so $E[G] < 0$ for the player. Expectation is the long-run average stake — not a promise about the next roll.
+
+### Variance of a random variable
+
+Spread for a random variable mirrors population variance from Lesson 1, with a known center $\mu = E[X]$:
+
+$$\mathrm{Var}(X) = E[(X - \mu)^2] = E[X^2] - \mu^2$$
+
+Standard deviation $\mathrm{SD}(X) = \sqrt{\mathrm{Var}(X)}$ restores the original units. The computational form $E[X^2] - (E[X])^2$ is usually easier — and it reminds you that $E[X^2] \neq (E[X])^2$ unless the variance is zero.
+
+Continuing the die:
+
+$$E[X^2] = \frac{1+4+9+16+25+36}{6} = \frac{91}{6}$$
+
+$$\mathrm{Var}(X) = \frac{91}{6} - \left(\frac{7}{2}\right)^2 = \frac{35}{12} \approx 2.92, \quad \mathrm{SD}(X) \approx 1.71$$
+
+| Fixed dataset (Lesson 1) | Random variable (now) |
+|--------------------------|------------------------|
+| $\bar{x} = \frac{1}{n}\sum x_i$ | $E[X] = \sum x\, P(X=x)$ |
+| $s^2$ uses $n-1$ because $\bar{x}$ is estimated | $\mathrm{Var}(X)$ uses known $\mu = E[X]$ |
+| Summarizes *your sample* | Summarizes the *chance process* |
+
+### Linearity of expectation
+
+The most useful property in applied probability:
+
+$$E[X + Y] = E[X] + E[Y]$$
+
+always — **even when $X$ and $Y$ are dependent**. Independence is *not* required. (Contrast: variances add only under independence / zero correlation. $Y = -X$ makes $X+Y$ constant, so $\mathrm{Var}(X+Y) = 0$, not $2\,\mathrm{Var}(X)$.)
+
+**Indicator trick.** Let $I = 1$ if event $A$ occurs and $0$ otherwise. Then $E[I] = P(A)$. Counting becomes summing indicators; expectation becomes summing probabilities.
+
+**Matching hats.** $n$ people get randomly shuffled hats. Let $X$ be the number who get their own hat. The distribution of $X$ is messy, but write $X = I_1 + \cdots + I_n$ where $I_j = 1$ if person $j$ matches. Person $j$'s hat is equally likely to be any of the $n$, so $E[I_j] = 1/n$. The $I_j$ are *dependent* (if $n-1$ match, the last must), yet:
+
+$$E[X] = \sum_{j=1}^{n} E[I_j] = n \cdot \frac{1}{n} = 1$$
+
+for every $n \ge 1$. Brute force for $n=3$ (six permutations) also averages to 1 — linearity gives the same answer without listing anything.[⁶]
+
+<Callout variant="tip" title="Bridge from Lesson 1">
+Descriptive stats: reweight each *observed* number by $1/n$. Expectation: reweight each *possible* number by its probability. Same balance-point intuition; different weights.
+</Callout>
+
+## Closing
+
+You now have two moves that cover most of probabilistic reasoning in data work:
+
+1. **Condition and renormalize** — evidence restricts the world; Bayes flips likelihoods into posteriors and refuses to ignore base rates.
+2. **Summarize the chance process** — $E[X]$ and $\mathrm{Var}(X)$ are the mean and variance of a distribution, with linearity of expectation as a workhorse that survives dependence.
+
+Next we'll meet the named distributions that arise over and over — not as a zoo to memorize, but as generative stories with fingerprints you'll recognize in data.
+
+## Practice
+
+1. A factory produces 2% defective parts. An inspector flags defectives 95% of the time and falsely flags good parts 3% of the time. A part is flagged. Using a population of 10,000, estimate $P(\text{defective} \mid \text{flagged})$. Then write the same answer with Bayes' formula.
+
+2. A fair coin is flipped 3 times. Let $X$ be the number of heads. List the PMF of $X$, then compute $E[X]$ and $\mathrm{Var}(X)$ two ways: (a) from the definition, (b) by writing $X = I_1+I_2+I_3$ and using linearity (for the mean) plus independence of the flips (for the variance).
+
+3. Explain, without formulas, why $P(\text{spam} \mid \text{"FREE"})$ can be high in one inbox and low in another even when $P(\text{"FREE"} \mid \text{spam})$ is identical. What changed?
+
+4. True or false, and why: "If $E[X] = 0$, then $X$ is usually near 0." What quantity would make the claim more precise?
+
+<Quiz questions={[
+	{
+		q: "A disease has prevalence 0.1%. A test is 100% sensitive with a 1% false-positive rate. You test positive. Roughly what is P(disease | +)?",
+		options: [
+			"About 99%",
+			"About 90%",
+			"About 9%",
+			"About 1%"
+		],
+		answer: "About 9%",
+		explain: "Out of 10,000 people: ~10 sick (all test +) and ~9,990 healthy with ~100 false +. Posterior ≈ 10/110 ≈ 9%. Accuracy ≠ posterior."
+	},
+	{
+		q: "Which statement correctly describes independence of events A and B?",
+		options: [
+			"A and B cannot occur together",
+			"P(A ∩ B) = 0",
+			"P(A | B) = P(A) — learning B doesn't change the probability of A",
+			"P(A | B) = P(B | A)"
+		],
+		answer: "P(A | B) = P(A) — learning B doesn't change the probability of A",
+		explain: "Independence means conditioning doesn't move the probability. Mutually exclusive (can't occur together) is a different idea and usually implies dependence."
+	},
+	{
+		q: "For a fair six-sided die, E[X] = 3.5. Why is that not a contradiction?",
+		options: [
+			"The die is unfair in the long run",
+			"Expectation is a weighted average (center of mass), not a value X must take",
+			"You should use the median instead, which is also 3.5",
+			"E[X] is only defined for continuous random variables"
+		],
+		answer: "Expectation is a weighted average (center of mass), not a value X must take",
+		explain: "E[X] balances probability mass on the number line. It need not be a possible outcome — same idea as a mean of 2.4 children."
+	},
+	{
+		q: "n hats are randomly permuted. X = number of people who get their own hat. The indicators I_j (person j matches) are dependent. What is E[X]?",
+		options: [
+			"0, because dependence cancels the mean",
+			"1, by linearity: each E[I_j] = 1/n, and linearity does not need independence",
+			"n/2",
+			"Impossible to compute without the full PMF of X"
+		],
+		answer: "1, by linearity: each E[I_j] = 1/n, and linearity does not need independence",
+		explain: "E[X] = Σ E[I_j] = n·(1/n) = 1 for every n. Dependence blocks multiplying probabilities and adding variances — not adding expectations."
+	}
+]} />
+
+<Sources list={[
+	{ author: "Blitzstein & Hwang", year: "2019", title: "Introduction to Probability — Conditioning and Bayes", url: "https://drive.google.com/file/d/1VmkAAG8BOOt79DxIhm8zDYxkTVOAT9fW/view" },
+	{ author: "Gigerenzer & Hoffrage", year: "1995", title: "How to Improve Bayesian Reasoning Without Instruction: Frequency Formats", url: "https://library.mpib-berlin.mpg.de/ft/gg/GG_How_1995.pdf" },
+	{ author: "Gigerenzer, G.", year: "2011", title: "What Are Natural Frequencies?", url: "https://doi.org/10.1136/bmj.d6386" },
+	{ author: "Casscells, Schoenberger & Graboys", year: "1978", title: "Interpretation by Physicians of Clinical Laboratory Results", url: "https://doi.org/10.1056/NEJM197811022991808" },
+	{ author: "Sun, D.", year: "2024", title: "Expected Value (center of mass)", url: "https://dlsun.github.io/probability/expected-value.html" },
+	{ author: "MIT OCW 6.042J", year: "2005", title: "Linearity of Expectation / Hat Check", url: "https://ocw.mit.edu/courses/6-042j-mathematics-for-computer-science-fall-2005/6ad0342f836f80c219470870db432c18_ln14.pdf" },
+	{ author: "OpenIntro", year: "2024", title: "Introduction to Modern Statistics — Probability", url: "https://openintro-ims.netlify.app/" },
+	{ author: "Brownlee, J.", year: "2019", title: "A Gentle Introduction to Bayes Theorem for Machine Learning", url: "https://machinelearningmastery.com/bayes-theorem-for-machine-learning/" }
+]} />

@@ -19,7 +19,7 @@ A refresher and deepening of the core mathematical toolkit for data science and 
 - Bayesian inference beyond Bayes' theorem basics
 
 ## Sections
-- [ ] 1. **Descriptive Statistics** — Summarize data with center, spread, shape; choose robust measures; connect to ML loss functions
+- [x] 1. **Descriptive Statistics** — Summarize data with center, spread, shape; choose robust measures; connect to ML loss functions
 - [ ] 2. **Probability Foundations** — Conditional probability, Bayes' theorem, expected value, variance; the language of uncertainty
 - [ ] 3. **Distributions Zoo** — When and why each distribution arises (Normal, Binomial, Poisson, Exponential, etc.); generative stories
 - [ ] 4. **From Samples to Inference** — Sampling distributions, standard error, CLT, confidence intervals
