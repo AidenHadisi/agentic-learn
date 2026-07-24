@@ -1,0 +1,119 @@
+import { Callout, Quiz, Stepper, Reveal, Scenario, Playground, Tabs, Mermaid, Chart, CodeBlock, Sources } from "@learn/components";
+import { Step } from "./components/Stepper.jsx";
+import { Tab } from "./components/Tabs.jsx";
+
+# Component Gallery
+
+<div className="lesson-meta">Reference for all available lesson components</div>
+
+## Callout
+
+<Callout variant="key">This is a key takeaway — the most important point.</Callout>
+
+<Callout variant="warn">Warning callout for common mistakes.</Callout>
+
+<Callout variant="tip">A helpful tip for the learner.</Callout>
+
+<Callout variant="info">General information note.</Callout>
+
+## Quiz
+
+<Quiz questions={[
+	{ q: "What color is the sky on a clear day?", options: ["Red", "Blue", "Green"], answer: 1, explain: "Rayleigh scattering causes shorter blue wavelengths to scatter more." },
+	{ q: "Which planet is closest to the sun?", options: ["Venus", "Mercury", "Mars"], answer: 1, explain: "Mercury orbits at about 58 million km from the sun." },
+]} />
+
+## Stepper
+
+<Stepper>
+	<Step>First, define the problem clearly.</Step>
+	<Step>Next, gather requirements and constraints.</Step>
+	<Step>Finally, implement the simplest solution that works.</Step>
+</Stepper>
+
+## Reveal
+
+Think about it: what happens when you divide by zero?
+
+<Reveal prompt="Show the answer">
+	Division by zero is undefined in mathematics. In programming, it typically throws an exception or returns infinity/NaN depending on the language.
+</Reveal>
+
+## Scenario
+
+<Scenario
+	start="start"
+	nodes={[
+		{ id: "start", title: "A user reports a bug", body: "The app crashes on login. What do you do first?", choices: [
+			{ label: "Check the logs", next: "logs" },
+			{ label: "Try to reproduce", next: "reproduce" },
+		]},
+		{ id: "logs", title: "Good instinct", body: "The logs show a null pointer exception in the auth module.", feedback: "Logs give you the fastest path to root cause." },
+		{ id: "reproduce", title: "Useful but slower", body: "You reproduce the crash after 5 minutes.", feedback: "Reproducing confirms the bug exists, but checking logs first would have been faster." },
+	]}
+/>
+
+## Playground
+
+<Playground
+	controls={[
+		{ id: "requests", label: "Requests/sec", min: 10, max: 1000, step: 10, value: 100 },
+		{ id: "latency", label: "Avg latency (ms)", min: 1, max: 50, step: 1, value: 10 },
+	]}
+	outputs={[
+		{ label: "Throughput", terms: { requests: 1 }, intercept: 0, precision: 0, unit: " req/s" },
+		{ label: "P99 estimate", terms: { latency: 3.5 }, intercept: 2, precision: 1, unit: " ms" },
+	]}
+/>
+
+## Tabs
+
+<Tabs>
+	<Tab label="Python">
+		```python
+		def hello():
+		    print("Hello, world!")
+		```
+	</Tab>
+	<Tab label="JavaScript">
+		```javascript
+		function hello() {
+		  console.log("Hello, world!");
+		}
+		```
+	</Tab>
+</Tabs>
+
+## Mermaid
+
+<Mermaid chart={`flowchart LR
+  A[Input] --> B[Process]
+  B --> C[Output]
+  B --> D[Error handling]
+`} />
+
+## Chart
+
+<Chart
+	type="bar"
+	data={{
+		labels: ["Jan", "Feb", "Mar", "Apr"],
+		datasets: [{ label: "Requests (k)", data: [12, 19, 8, 15] }],
+	}}
+	options={{
+		plugins: { title: { display: true, text: "Monthly requests" } },
+	}}
+/>
+
+## CodeBlock
+
+<CodeBlock language="rust" title="src/main.rs" code={`fn main() {
+    println!("Hello from Rust!");
+}`} />
+
+## Sources
+
+<Sources list={[
+	{ id: 1, author: "React Team", year: 2024, title: "React Documentation", url: "https://react.dev" },
+	{ id: 2, author: "MDX Contributors", year: 2024, title: "MDX: Markdown for the component era", url: "https://mdxjs.com" },
+]} />

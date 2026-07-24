@@ -1,0 +1,315 @@
+import { Callout, Quiz, Stepper, Step, Reveal, Scenario, Ordering, Tabs, Tab, Mermaid, Chart, CodeBlock } from "@learn/components";
+
+# How SimilarWeb Actually Works
+
+<div className="lesson-meta">Understand the methodology behind traffic estimation tools so you know what to replicate — and what to skip.</div>
+
+SimilarWeb, Semrush, and Ahrefs all claim to tell you how much traffic any website gets. But they use fundamentally different approaches, and none of them are measuring — they're **estimating**. Understanding how they work (and fail) is the foundation for building your own.
+
+## The Two Approaches
+
+There are two distinct methodologies in the market, and confusing them is one of the most common mistakes:
+
+<Tabs>
+	<Tab label="Panel/Clickstream (SimilarWeb, Semrush Trends)">
+		**How it works:** Observe real browsing behavior from a panel of opted-in users (browser extensions, SDKs, ISP partnerships), then extrapolate to the full population.
+
+		**What it estimates:** Total traffic across all channels — direct, organic, paid, social, referral.
+
+		**Analogy:** Nielsen TV ratings. A sample of households have meters; ratings for the whole country are extrapolated from that sample.
+	</Tab>
+	<Tab label="Search Model (Ahrefs, Semrush Domain Analytics)">
+		**How it works:** Crawl SERPs, find every keyword a site ranks for, multiply rank-position CTR by search volume, and sum.
+
+		**What it estimates:** Organic search traffic only — not total visits.
+
+		**Analogy:** Estimating a store's foot traffic by counting how many people see its billboard ads and applying an average "walk-in rate."
+	</Tab>
+</Tabs>
+
+<Callout variant="key">
+SimilarWeb reports **total visits** from a panel. Ahrefs reports **estimated organic clicks** from a keyword model. These are completely different numbers measuring different things. Never compare them directly.
+</Callout>
+
+## Panel-Based Estimation: The Core Method
+
+SimilarWeb's approach (and the one we'll replicate) is panel-based estimation. Here's how it works at a high level:
+
+<Stepper>
+	<Step>**Collect** browsing data from millions of opted-in devices — browser extensions, mobile SDKs, and partnership feeds from ISPs and measurement firms.</Step>
+	<Step>**Clean** the data — strip PII, filter bots, normalize across devices and geographies, remove anomalies.</Step>
+	<Step>**Classify** each page visit by traffic source (organic, direct, social, etc.) using referrer signals and URL patterns.</Step>
+	<Step>**Extrapolate** panel observations to population-level estimates using statistical weighting by country, device type, demographics, and industry.</Step>
+	<Step>**Calibrate** against ground truth — millions of sites share their actual analytics (like GA4), which the model uses as training labels.</Step>
+</Stepper>
+
+### Panel sizes in the industry
+
+| Tool | Panel claim | Notes |
+|------|------------|-------|
+| SimilarWeb | "Millions of devices," 10B signals/day | Never publishes an exact panelist count |
+| Semrush Trends | 200M+ users, 190+ countries | Most explicit public claim; sources from hundreds of clickstream providers |
+| Jumpshot (defunct) | ~100M devices, 5B actions/day | Shut down Jan 2020 after privacy scandal |
+
+### The Jumpshot cautionary tale
+
+Jumpshot was the gold standard clickstream provider until 2020. It was powered by Avast antivirus — installed on ~435M devices — which quietly logged browsing data from users who thought they were getting free virus protection. When journalists exposed the re-identification risk, Avast shut Jumpshot overnight. ~250 jobs lost, $180M in value destroyed.
+
+This matters for two reasons:
+
+1. **Much of the "panel truth" in SEO research from 2016-2019 was Jumpshot data.** Zero-click studies, Facebook traffic analyses, etc. — that underlying data source no longer exists.
+2. **It proves panel composition matters enormously.** Jumpshot's panel was "people who install free antivirus" — a specific demographic, not a random sample of internet users.
+
+<Callout variant="warn">
+Traffic estimates are only as good as **who is in the panel**. Jumpshot skewed toward desktop users who install free software. SimilarWeb skews toward users who install browser extensions. Neither is a random sample of the internet.
+</Callout>
+
+## SimilarWeb's Four Data Sources
+
+SimilarWeb combines four distinct data sources (they call it the "Dataverse"):
+
+<Mermaid chart={`flowchart TD
+	A["1. Direct Measurement<br/>Sites sharing their GA/analytics"] --> E[ML Pipeline]
+	B["2. Contributory Network<br/>SimilarWeb's own extensions/SDKs"] --> E
+	C["3. Partnerships<br/>ISP, DSP, measurement firms"] --> E
+	D["4. Public Data<br/>Crawled web, census, app stores"] --> E
+	E --> F["Cleaning & Classification"]
+	F --> G["Statistical Weighting & Calibration"]
+	G --> H["Traffic Estimates"]
+`} />
+
+| Source | What it provides | Role in the model |
+|--------|-----------------|-------------------|
+| **Direct Measurement** | Real GA4/analytics from millions of sites that opt in | Ground truth labels for training |
+| **Contributory Network** | Anonymized browsing from SimilarWeb's own products | Core clickstream panel |
+| **Partnerships** | Pre-analyzed signals from ISPs, DSPs, measurement firms | Additional behavioral data |
+| **Public Data** | Crawled web pages, census/population data, app store listings | Features and priors for scaling |
+
+<Callout variant="tip">
+The "Direct Measurement" source is the most important for accuracy. Sites that share their real analytics with SimilarWeb get better estimates for themselves **and** their competitors in the same niche — because the model has ground truth to calibrate against.
+</Callout>
+
+### What this means for your DIY tool
+
+You already have an analog of source #1 (labeled data from sites you track). Sources #2 and #3 are the expensive parts — you'd need to build or buy clickstream. Source #4 (public data) is free and where we'll get most of our features.
+
+The key insight: **you don't need a panel to estimate traffic**. You need:
+- Labels (ground truth visits for a training set)
+- Features (public signals that correlate with traffic)
+- A model that maps features → visits
+
+SimilarWeb has a huge panel that improves accuracy, but even they calibrate against first-party analytics. If you have good labels, you can train a model on public features alone.
+
+## How Channel Classification Works
+
+SimilarWeb breaks traffic into channels. Here's what signals they actually use:
+
+| Channel | Primary signal | Classification method |
+|---------|---------------|----------------------|
+| **Direct** | No HTTP referrer | Absence of referrer = typed URL, bookmark, or "dark traffic" |
+| **Organic Search** | Referrer is a search engine domain | google.com, bing.com, etc. without paid URL markers |
+| **Paid Search** | Search engine referrer + ad markers | `gclid` param, `/aclk` paths, sponsored click patterns |
+| **Social (Organic)** | Social media domain as referrer | facebook.com, reddit.com, twitter.com, etc. |
+| **Social (Paid)** | Social referrer + click IDs/UTMs | `fbclid`, `utm_medium=paid_social`, etc. |
+| **Referral** | Other website as referrer | Any domain not classified as search/social |
+| **Display** | Ad network landing patterns | Programmatic ad host referrers |
+| **Email** | Webmail domain as referrer | gmail.com, outlook.com web versions only |
+| **Gen AI** | AI chatbot domain as referrer | chatgpt.com, gemini.google.com, perplexity.ai |
+
+### The "dark traffic" problem
+
+This is the single biggest source of misclassification — and it affects every tool including GA4:
+
+<Reveal prompt="What everyday actions produce 'dark traffic' that gets mislabeled as Direct?">
+- **Messaging apps** (WhatsApp, Slack, iMessage, Telegram) — strip or omit the Referer header
+- **Native email apps** (Outlook desktop, Apple Mail, Gmail app) — no web referrer
+- **QR codes** without UTM parameters
+- **Links in PDFs, Word docs, presentations**
+- **Privacy browsers and extensions** that block referrers
+- **HTTPS → HTTP transitions** where browsers strip the referrer
+
+All of these show up as "Direct" traffic even though the user clicked a link from somewhere specific. Industry estimates suggest 10-20% of "Direct" traffic is actually from identifiable sources.
+</Reveal>
+
+<Callout variant="key">
+For your DIY tool, channel classification from public signals alone is the **hardest** problem. Without seeing actual referrer data in a clickstream, you can only estimate organic search (via keyword rankings) and infer rough channel proportions from industry benchmarks. We'll tackle this in Section 5.
+</Callout>
+
+## How Geo Distribution Works
+
+SimilarWeb determines country-level traffic splits using:
+
+1. **Panel observation location** — each clickstream event has a device/network location (not IP-based; SimilarWeb explicitly says they don't collect IPs)
+2. **Census/population priors** — public demographic data helps scale panel observations to national populations
+3. **Country-specific models** — localized ML models for major markets (US, UK, BR, IN, JP, RU)
+
+Important nuances:
+- Geo = where the **user** is, not where the URL is targeted. Visiting `sephora.com.au` doesn't auto-assign you to Australia.
+- Panels are denser in US/EU where extension adoption is highest. Emerging markets are noisier.
+- Only ~58 countries get full independent geo breakdown. Others fold into "Worldwide."
+
+## How Accurate Are These Tools?
+
+This is the most important section. Three major studies give us empirical accuracy numbers:
+
+<Chart
+	type="bar"
+	data={{
+		labels: ["Semrush", "Datos", "SimilarWeb", "Ahrefs"],
+		datasets: [{
+			label: "Correlation with GA Users",
+			data: [0.79, 0.72, 0.66, 0.50],
+			backgroundColor: ["#4F46E5", "#7C3AED", "#2563EB", "#F59E0B"]
+		}]
+	}}
+	options={{
+		plugins: {
+			title: { display: true, text: "SparkToro Study — 641 sites, Jun 2020–Jun 2021" }
+		},
+		scales: { y: { min: 0, max: 1, title: { display: true, text: "Pearson correlation" } } }
+	}}
+/>
+
+### SparkToro study (641 sites)
+
+- Best correlation: Semrush at 0.79, Datos at 0.72, SimilarWeb at 0.66
+- Ahrefs: 0.50 — but it only measures organic, so this isn't a fair comparison
+- **Within ±30% of GA:** ~63% of estimates for large sites (250k+); much worse for small sites
+- Error bars **often exceed ±100%** — even for the best tools
+- SimilarWeb was strongest for 5k–100k monthly users, worst on sites under 5k
+
+### Ahrefs self-study (1,635 sites vs GSC)
+
+- Median deviation from Google Search Console: **49.5%**
+- Pearson correlation: **0.76**
+- Semrush on the same sites: 68% median deviation, 0.74 correlation
+- Range per-site: from under 5% to over 1,000% off
+
+### Academic study (86 sites, Jansen et al. 2022)
+
+- SimilarWeb underestimated total visits by **19%** on aggregate
+- Underestimated unique visitors by **39%**
+- But ranking correlation was **0.954** — the relative ordering is very reliable
+
+<Callout variant="key" title="The accuracy lesson">
+These tools are **directional compasses, not speedometers**. They tell you who's bigger than whom (rank correlation 0.75–0.95) but routinely miss absolute visit counts by 20-50%+. For your DIY tool, optimize for **rank accuracy within a peer set**, not exact visit numbers.
+</Callout>
+
+### What accuracy should you aim for?
+
+Based on the published research, here are realistic targets for a DIY tool:
+
+| Metric | Realistic target | Industry best |
+|--------|-----------------|---------------|
+| Rank correlation (Spearman) within a niche | ≥0.75 | 0.79–0.95 |
+| Median absolute % error (mid-size sites) | 30–50% | ~20% |
+| % of estimates within ±30% | 40–55% | ~63% |
+| Small sites (under 5k visits) | Directional only or refuse to estimate | SimilarWeb hides these |
+
+### The metric mismatch trap
+
+One subtle but critical point: **GA Users ≠ Visits ≠ Sessions ≠ Unique Visitors.**
+
+<Scenario
+	start="start"
+	nodes={[
+		{ id: "start", title: "Comparing your GA to SimilarWeb", body: "SimilarWeb says your site gets 50,000 visits/month. Your GA4 shows 35,000. Is SimilarWeb wrong?", choices: [
+			{ label: "Yes, they're overestimating by 43%", next: "wrong" },
+			{ label: "Depends on which GA metric I'm looking at", next: "right" },
+		]},
+		{ id: "wrong", title: "Not necessarily", body: "You compared SimilarWeb 'visits' (sessions) to GA4 'active users.' Those are different metrics. GA4 sessions might show 48,000.", feedback: "Always match the metric definition. SimilarWeb 'visits' ≈ GA sessions, not users." },
+		{ id: "right", title: "Exactly right", body: "SimilarWeb 'visits' maps closest to GA sessions. GA4 'active users' counts unique people, which is always lower. If your GA4 sessions show 48,000, SimilarWeb is only off by ~4%.", feedback: "The SparkToro study found GA Users (not sessions) was the best correlate — but always know which metric you're comparing." },
+	]}
+/>
+
+## Putting It Together: What to Replicate
+
+<Ordering
+	items={[
+		{ id: "labels", label: "Collect ground-truth labels (real visits for a set of sites)" },
+		{ id: "features", label: "Gather public features that correlate with traffic (DNS, SEO, ad signals)" },
+		{ id: "model", label: "Train a model: features → estimated visits" },
+		{ id: "calibrate", label: "Calibrate per-niche to reduce systematic bias" },
+		{ id: "confidence", label: "Ship with confidence intervals, refuse tiny sites" },
+	]}
+	correct={["labels", "features", "model", "calibrate", "confidence"]}
+	success="Correct — this is the pipeline we'll build across the remaining sections."
+	retry="Think about what you need before you can train a model. Labels and features come first."
+/>
+
+**What we're keeping from SimilarWeb's approach:**
+- Panel-calibrated estimation (we have labels)
+- Multi-source feature fusion (public data)
+- Per-niche calibration
+- Confidence intervals and minimum-traffic thresholds
+
+**What we're skipping:**
+- Building/buying a clickstream panel ($$$)
+- ISP/CDN partnerships ($$$)
+- Browser extensions (privacy nightmare, Jumpshot lesson)
+
+---
+
+## Practice
+
+1. Pick three sites you know the real traffic for. Look them up on SimilarWeb's free tier and Ahrefs' free checker. How far off are the estimates? Which tool is closer?
+
+2. For one of those sites, compare SimilarWeb's channel breakdown to the real analytics. Which channels are most accurate? Where does dark traffic inflate "Direct"?
+
+3. Think about the sites in your labeled dataset. What public signals might correlate with their traffic? List at least five (we'll formalize these in Section 3).
+
+## Quiz
+
+<Quiz questions={[
+	{
+		q: "SimilarWeb reports 100k monthly visits for a site. Ahrefs reports 30k traffic. Why the difference?",
+		options: [
+			"SimilarWeb is more accurate",
+			"Ahrefs only estimates organic search traffic, not total visits",
+			"They use the same methodology but different panels",
+		],
+		answer: 1,
+		explain: "Ahrefs estimates organic search clicks from keyword rankings × CTR. SimilarWeb estimates total visits from all channels using panel data. They're measuring different things."
+	},
+	{
+		q: "A user clicks a link in a WhatsApp message to visit your site. How does SimilarWeb classify this traffic?",
+		options: [
+			"Social",
+			"Referral",
+			"Direct",
+			"Email",
+		],
+		answer: 2,
+		explain: "WhatsApp (and most messaging apps) strips the Referer header, so there's no signal to classify the source. It falls into 'Direct' — this is the dark traffic problem."
+	},
+	{
+		q: "What correlation with real analytics should a DIY traffic estimation tool realistically aim for?",
+		options: [
+			"0.95+ (nearly perfect)",
+			"0.75–0.85 (strong but not exact)",
+			"0.50–0.60 (rough directional)",
+			"0.30–0.40 (barely useful)",
+		],
+		answer: 1,
+		explain: "Industry-best tools achieve 0.79–0.95 rank correlation. A well-built DIY tool with good labels should aim for 0.75+ — strong enough for competitive ranking, not exact visit counts."
+	},
+	{
+		q: "Why did SimilarWeb build localized models for Brazil, India, Japan, and Russia in their 2024 update?",
+		options: [
+			"These countries have the most websites",
+			"Panel density is uneven — US/EU are over-represented, so other regions need separate models",
+			"Legal requirements in those countries",
+			"Those countries have the most internet users",
+		],
+		answer: 1,
+		explain: "Browser extension and SDK adoption is highest in US/EU, making the panel denser there. Countries with thinner panel coverage need localized models to correct for sampling bias."
+	},
+]} />
+
+## References
+
+- [SimilarWeb Data Methodology](https://support.similarweb.com/hc/en-us/articles/360001631538)
+- [SparkToro — Which 3rd-Party Traffic Estimate Best Matches GA?](https://sparktoro.com/blog/which-3rd-party-traffic-estimate-best-matches-google-analytics/)
+- [Ahrefs — How Accurate Are Search Traffic Estimations?](https://ahrefs.com/blog/traffic-estimations-accuracy/)
+- [Jansen et al. 2022 — Measuring user interactions with websites (PLOS One)](https://pmc.ncbi.nlm.nih.gov/articles/PMC9140287/)
+- [Semrush — How We Turn Traffic Data Into Intelligence](https://www.semrush.com/kb/1211-how-semrush-turns-traffic-data-into-traffic-intelligence)

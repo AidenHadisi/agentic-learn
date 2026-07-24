@@ -1,0 +1,201 @@
+/* Design tokens — editorial textbook feel.
+   Warm paper light / deep ink dark. Single teal accent.
+   Distinctive serif display + clean sans body. */
+
+:root {
+	--font-display: "Newsreader", "Georgia", serif;
+	--font-body: "Inter", system-ui, sans-serif;
+	--font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+	--bg: #fdfcfa;
+	--bg-raised: #f5f3ef;
+	--bg-inset: #edeae5;
+	--text: #1c1917;
+	--text-muted: #57534e;
+	--border: #e7e5e4;
+	--border-strong: #d6d3d1;
+
+	--accent: #0d9488;
+	--accent-soft: #ccfbf1;
+	--accent-contrast: #ffffff;
+
+	--ok: #15803d;
+	--ok-bg: #ecfdf5;
+	--err: #b91c1c;
+	--err-bg: #fef2f2;
+	--warn: #92400e;
+	--warn-bg: #fffbeb;
+
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 1rem;
+	--space-4: 1.5rem;
+	--space-5: 2.5rem;
+	--space-6: 4rem;
+
+	--radius: 0.5rem;
+	--measure: 68ch;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #1a1a1a;
+		--bg-raised: #262626;
+		--bg-inset: #1f1f1f;
+		--text: #f5f5f4;
+		--text-muted: #a8a29e;
+		--border: #3a3a3a;
+		--border-strong: #525252;
+
+		--accent: #2dd4bf;
+		--accent-soft: #134e4a;
+		--accent-contrast: #0f172a;
+
+		--ok: #4ade80;
+		--ok-bg: #14532d;
+		--err: #f87171;
+		--err-bg: #450a0a;
+		--warn: #fbbf24;
+		--warn-bg: #451a03;
+	}
+}
+
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+html {
+	font-family: var(--font-body);
+	font-size: 17px;
+	line-height: 1.7;
+	color: var(--text);
+	background: var(--bg);
+	-webkit-font-smoothing: antialiased;
+}
+
+body {
+	padding: var(--space-5) var(--space-4);
+}
+
+.lesson {
+	max-width: var(--measure);
+	margin: 0 auto;
+}
+
+h1, h2, h3, h4 {
+	font-family: var(--font-display);
+	font-weight: 700;
+	line-height: 1.25;
+	color: var(--text);
+}
+
+h1 {
+	font-size: 2.25rem;
+	margin-bottom: var(--space-3);
+	letter-spacing: -0.02em;
+}
+
+h2 {
+	font-size: 1.5rem;
+	margin-top: var(--space-6);
+	margin-bottom: var(--space-3);
+	padding-bottom: var(--space-2);
+	border-bottom: 1px solid var(--border);
+}
+
+h3 {
+	font-size: 1.2rem;
+	margin-top: var(--space-5);
+	margin-bottom: var(--space-2);
+}
+
+p, ul, ol {
+	margin-bottom: var(--space-3);
+}
+
+ul, ol {
+	padding-left: var(--space-4);
+}
+
+a {
+	color: var(--accent);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+a:hover {
+	opacity: 0.8;
+}
+
+code {
+	font-family: var(--font-mono);
+	font-size: 0.88em;
+	background: var(--bg-inset);
+	padding: 0.15em 0.35em;
+	border-radius: 4px;
+}
+
+pre {
+	background: var(--bg-raised);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--space-3);
+	overflow-x: auto;
+	margin-bottom: var(--space-4);
+}
+
+pre code {
+	background: none;
+	padding: 0;
+	font-size: 0.85rem;
+	line-height: 1.6;
+}
+
+blockquote {
+	border-left: 3px solid var(--accent);
+	padding-left: var(--space-3);
+	color: var(--text-muted);
+	margin-bottom: var(--space-3);
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-bottom: var(--space-4);
+	font-size: 0.92rem;
+}
+
+th, td {
+	padding: var(--space-2) var(--space-3);
+	border: 1px solid var(--border);
+	text-align: left;
+}
+
+th {
+	background: var(--bg-raised);
+	font-weight: 600;
+}
+
+strong {
+	font-weight: 600;
+}
+
+.lesson-meta {
+	display: flex;
+	gap: var(--space-3);
+	color: var(--text-muted);
+	font-size: 0.88rem;
+	margin-bottom: var(--space-4);
+	padding-bottom: var(--space-3);
+	border-bottom: 1px solid var(--border);
+}
+
+.lesson-objective {
+	background: var(--accent-soft);
+	border-left: 3px solid var(--accent);
+	padding: var(--space-3);
+	border-radius: 0 var(--radius) var(--radius) 0;
+	margin-bottom: var(--space-5);
+}

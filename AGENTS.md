@@ -7,17 +7,14 @@ Before responding, read `.cursor/skills/teach/SKILL.md` and follow it.
 ## Ground rules
 
 - State lives in `topics/<slug>/` (syllabus + journal). Chat is ephemeral.
-- Research is gathered by parallel `researcher` agents. The main teacher
-  reconciles reports and is the sole owner of topic state.
-- Lessons are produced by `lesson-builder` from a completed section brief.
+- Dispatch subagents to research when needed. They return findings; only the main agent writes files.
+- Lessons are MDX files built to self-contained HTML via `npm run lesson:build`.
+- Only use components from `lesson-kit/README.md`. No custom CSS.
 - Quizzes are self-scored by the student. Never ask for or record scores.
 - Never solve practice for the student.
-- Build lessons with `npm run lesson:build -- <path>` so capabilities are
-  selectively inlined and remain offline.
 
 ## Layout
 
-- `.cursor/skills/teach/` — the skill and lesson guide
-- `.cursor/agents/` — researcher and lesson-builder contracts
-- `templates/` — lesson template and vendored highlight.js
+- `.cursor/skills/teach/` — the teaching skill
+- `lesson-kit/` — MDX components, styles, build config, gallery
 - `topics/<slug>/` — one directory per topic

@@ -1,0 +1,420 @@
+import { Callout, Quiz, Stepper, Step, Reveal, Ordering, Tabs, Tab, Mermaid, Chart, CodeBlock } from "@learn/components";
+
+# Feature Engineering
+
+<div className="lesson-meta">Turn raw data sources into a feature vector you can feed into a model.</div>
+
+You know what data sources exist. Now the question is: how do you turn "a CrUX rank bucket" and "an ads.txt file" into numbers a model can learn from? This section covers the feature vector design, transformations, the domain-matching problem, and the collection pipeline.
+
+## The Feature Vector
+
+Here's every feature worth extracting, organized by source:
+
+### Popularity ranks (the heavy hitters)
+
+| Feature | Source | Type | Encoding |
+|---------|--------|------|----------|
+| `crux_in` | CrUX | binary | 1 if origin in CrUX, 0 if absent |
+| `crux_log_rank` | CrUX | float | `log10(rank_bucket)`, sentinel for absent |
+| `crux_rank_ord` | CrUX | ordinal | bucket index 0..N |
+| `tranco_in` | Tranco | binary | present in top-1M list |
+| `tranco_log_rank` | Tranco | float | `log10(rank)` |
+| `tranco_delta_30d` | Tranco | float | log-rank change over 30 days |
+| `cf_in` | Radar | binary | in any Radar bucket |
+| `cf_log_bucket` | Radar | float | `log10(bucket)` |
+| `cf_trending` | Radar | binary | in TRENDING_RISE |
+| `umbrella_in` | Umbrella | binary | in top-1M |
+| `umbrella_log_rank` | Umbrella | float | `log10(rank)` |
+
+### SEO signals
+
+| Feature | Source | Type | Encoding |
+|---------|--------|------|----------|
+| `dfs_log_etv` | DataForSEO | float | `log1p(organic_etv)` |
+| `dfs_keyword_count` | DataForSEO | int | number of ranked keywords |
+| `dfs_pos_1` | DataForSEO | int | keywords in position 1 |
+| `dfs_pos_2_3` | DataForSEO | int | keywords in positions 2-3 |
+| `dfs_top3_share` | DataForSEO | float | `(pos_1 + pos_2_3) / keyword_count` |
+
+### Ad-tech signals
+
+| Feature | Source | Type | Encoding |
+|---------|--------|------|----------|
+| `ads_has_file` | ads.txt | binary | 200 response with valid text |
+| `ads_direct_count` | ads.txt | int | DIRECT relationship entries |
+| `ads_reseller_count` | ads.txt | int | RESELLER entries |
+| `ads_unique_ssp` | ads.txt | int | unique SSP domains |
+| `ads_has_google` | ads.txt | binary | google.com in SSP list |
+| `ads_has_ownerdomain` | ads.txt | binary | OWNERDOMAIN variable present |
+
+### Authority and age
+
+| Feature | Source | Type | Encoding |
+|---------|--------|------|----------|
+| `opr_score` | Open PageRank | float | 0-10 scale (already log-ish) |
+| `opr_log_ref_domains` | Open PageRank | float | `log1p(referring_domains)` |
+| `domain_age_log` | RDAP | float | `log1p(days_since_registration)` |
+| `domain_is_new` | RDAP | binary | registered within last 365 days |
+
+That's roughly **30-35 features** before interactions — a good starting size for a model with thousands of labeled domains.
+
+## Why Log Everything
+
+Website traffic follows a **power law**. The difference between rank 1 and rank 100 is enormous; the difference between rank 500,000 and rank 500,100 is negligible. Raw ranks and traffic numbers span many orders of magnitude, which breaks linear models and makes tree splits inefficient.
+
+<Chart
+	type="bar"
+	data={{
+		labels: ["1", "10", "100", "1K", "10K", "100K", "1M"],
+		datasets: [
+			{
+				label: "Raw rank",
+				data: [1, 10, 100, 1000, 10000, 100000, 1000000],
+				backgroundColor: "#94A3B8"
+			},
+			{
+				label: "log10(rank)",
+				data: [0, 1, 2, 3, 4, 5, 6],
+				backgroundColor: "#4F46E5"
+			}
+		]
+	}}
+	options={{
+		plugins: { title: { display: true, text: "Log compresses the head, expands the tail" } },
+		scales: { y: { type: "logarithmic" } }
+	}}
+/>
+
+The relationship between rank and traffic is itself a power law. Research on CrUX data found:
+
+`yearly_pageviews ≈ 4 × 10¹² × rank^(-1.01)`
+
+So `log(traffic) ≈ a + b × log(rank)` — log-rank is the natural feature for predicting log-visits.
+
+<Callout variant="key">
+Always predict `log1p(monthly_visits)` as your target variable, not raw visits. Back-transform with `expm1()` for the final estimate. This makes the error metric meaningful across traffic tiers.
+</Callout>
+
+## Handling Missing Data
+
+Not every domain appears in every source. A site missing from CrUX might have 4,000 monthly visits (just below the threshold) or 40. This is **informative missingness** — the absence itself is a feature.
+
+<Tabs>
+	<Tab label="The Pattern">
+		For every ranked source, create two features:
+
+		1. **Binary presence flag** (`crux_in`, `tranco_in`, etc.)
+		2. **Log-rank with sentinel for missing** — use a value beyond the list's range
+
+		```python
+		CRUX_ABSENT = 1e8      # beyond 18M CrUX origins
+		TRANCO_ABSENT = 2e6    # beyond 1M Tranco list
+		UMBRELLA_ABSENT = 2e6  # beyond 1M Umbrella list
+
+		def encode_rank(rank, absent_sentinel):
+		    if rank is None:
+		        return 0, np.log10(absent_sentinel)  # (in_flag, log_rank)
+		    return 1, np.log10(max(rank, 1))
+		```
+
+		This lets the model learn different behaviors for "ranked low" vs "not ranked at all."
+	</Tab>
+	<Tab label="What NOT to do">
+		**Don't impute the mean rank.** If the average Tranco rank in your training set is 250,000, filling missing domains with 250,000 makes them look like mid-tier sites — biasing the model toward average predictions for unknown domains.
+
+		**Don't use zero.** Zero is ambiguous — does it mean "rank 0" (doesn't exist) or "missing"? Use explicit flags.
+
+		**Don't drop rows with missing features.** Long-tail domains will be missing from most sources. Dropping them throws away exactly the cases you need to handle.
+	</Tab>
+</Tabs>
+
+For count features (keyword count, ads.txt lines), distinguish between **truly zero** and **crawl failure**:
+
+<CodeBlock language="python" title="Distinguishing zero from missing" code={`def ads_features(domain, crawl_result):
+    if crawl_result is None:  # crawl failed
+        return {"ads_has_file": 0, "ads_direct_count": 0,
+                "ads_crawl_failed": 1}
+    if crawl_result == "":    # empty file
+        return {"ads_has_file": 0, "ads_direct_count": 0,
+                "ads_crawl_failed": 0}
+    # parse the actual file
+    parsed = parse_ads_txt(crawl_result)
+    return {**parsed, "ads_crawl_failed": 0}`} />
+
+## The eTLD+1 Problem
+
+Every source uses a different domain format. CrUX uses full origins (`https://www.example.com`), Tranco uses hostnames (`example.com`), Umbrella includes subdomains (`mail.google.com`), and ads.txt lives at the apex domain. You need a canonical key to join them.
+
+The **eTLD+1** (effective top-level domain + 1) is the standard:
+- `www.example.com` → `example.com`
+- `blog.example.co.uk` → `example.co.uk`
+- `user.github.io` → `user.github.io` (github.io is a public suffix)
+
+<CodeBlock language="python" title="Domain normalization with tldextract" code={`import tldextract
+from urllib.parse import urlparse
+
+extract = tldextract.TLDExtract(include_psl_private_domains=False)
+
+def to_etld1(value: str) -> str:
+    """Normalize any domain/URL to its eTLD+1."""
+    host = urlparse(value).hostname if "://" in value else value
+    host = (host or value).lower().strip(".").removeprefix("www.")
+    parts = extract(host)
+    return parts.top_domain_under_public_suffix
+
+# Examples:
+# to_etld1("https://www.bbc.co.uk/news")  → "bbc.co.uk"
+# to_etld1("mail.google.com")              → "google.com"
+# to_etld1("example.com")                  → "example.com"`} />
+
+<Callout variant="warn">
+Never roll your own domain parser with string splitting. `".".join(parts[-2:])` turns `bbc.co.uk` into `co.uk`. Always use the Public Suffix List via `tldextract` or equivalent.
+</Callout>
+
+**Join strategy per source:**
+
+| Source | Raw key format | Join rule |
+|--------|---------------|-----------|
+| CrUX | `https://www.example.com` | Parse origin → hostname → eTLD+1 |
+| Tranco | `example.com` | Already close; apply eTLD+1 to be safe |
+| Radar | ~eTLD+1 already | Direct join |
+| Umbrella | `mail.google.com`, `www.google.com` | Roll up: best (min) rank among all hosts under eTLD+1 |
+| DataForSEO | `example.com` | eTLD+1 |
+| ads.txt | Fetched from eTLD+1 | Direct |
+
+For Umbrella, aggregate subdomains:
+
+<CodeBlock language="python" title="Aggregating Umbrella subdomains" code={`umbrella_by_site = (
+    df.assign(site=df.host.map(to_etld1))
+      .groupby("site")
+      .agg(
+          umbrella_best_rank=("rank", "min"),
+          umbrella_host_count=("host", "nunique")
+      )
+)`} />
+
+## Collection Pipeline
+
+Here's the practical architecture for collecting and materializing features:
+
+<Mermaid chart={`flowchart TD
+	subgraph "Daily"
+		A["Tranco CSV"] --> F["Raw Store"]
+		B["Umbrella CSV"] --> F
+		C["Radar Top 100 + Trending"] --> F
+	end
+	subgraph "Weekly"
+		D["ads.txt Crawl"] --> F
+		E["DataForSEO Bulk ETV"] --> F
+		G["Radar Bucket CSVs"] --> F
+	end
+	subgraph "Monthly"
+		H["CrUX BigQuery Export"] --> F
+		I["Open PageRank Bulk"] --> F
+		J["RDAP Domain Age"] --> F
+	end
+	F --> K["eTLD+1 Join"]
+	K --> L["Feature Snapshot Table"]
+	L --> M["Model Scoring"]
+`} />
+
+### Storage schema
+
+<CodeBlock language="sql" title="Feature snapshot table" code={`CREATE TABLE feature_snapshot (
+    domain       TEXT NOT NULL,    -- eTLD+1
+    as_of        DATE NOT NULL,
+    -- CrUX
+    crux_in      INTEGER,
+    crux_log_rank REAL,
+    -- Tranco
+    tranco_in    INTEGER,
+    tranco_log_rank REAL,
+    tranco_delta_30d REAL,
+    -- Radar
+    cf_in        INTEGER,
+    cf_log_bucket REAL,
+    cf_trending  INTEGER,
+    -- Umbrella
+    umbrella_in  INTEGER,
+    umbrella_log_rank REAL,
+    -- DataForSEO
+    dfs_log_etv  REAL,
+    dfs_keyword_count INTEGER,
+    dfs_top3_share REAL,
+    -- ads.txt
+    ads_has_file INTEGER,
+    ads_direct_count INTEGER,
+    ads_unique_ssp INTEGER,
+    -- Authority
+    opr_score    REAL,
+    opr_log_ref_domains REAL,
+    -- Age
+    domain_age_log REAL,
+    domain_is_new INTEGER,
+    PRIMARY KEY (domain, as_of)
+);`} />
+
+### Rate limiting
+
+<CodeBlock language="python" title="Polite crawling with backoff" code={`import random, time, requests
+
+def fetch_with_backoff(url, session, max_retries=3, timeout=10):
+    for attempt in range(max_retries):
+        try:
+            r = session.get(url, timeout=timeout,
+                           headers={"User-Agent": "TrafficBot/1.0"})
+            if r.status_code == 429:
+                wait = float(r.headers.get("Retry-After", 5))
+                time.sleep(wait)
+                continue
+            return r
+        except requests.RequestException:
+            time.sleep(random.uniform(0, min(60, 2 ** attempt)))
+    return None`} />
+
+## Feature Importance: What Actually Predicts Traffic?
+
+Based on the research and published analyses, here's the expected feature importance hierarchy:
+
+<Ordering
+	items={[
+		{ id: "crux", label: "CrUX log-rank + in-flag — closest to real browsing" },
+		{ id: "etv", label: "DataForSEO log(etv) + keyword count — quantitative organic estimate" },
+		{ id: "tranco", label: "Tranco log-rank — stable consensus confirmation" },
+		{ id: "opr", label: "Open PageRank score + referring domains — authority signal" },
+		{ id: "ads", label: "ads.txt features — publisher classification" },
+		{ id: "age", label: "Domain age — maturity / cold-start signal" },
+	]}
+	correct={["crux", "etv", "tranco", "opr", "ads", "age"]}
+	success="This matches the expected importance order. CrUX and ETV carry the most weight; the rest are supporting features."
+	retry="Think about which features are closest to actually measuring traffic vs. measuring something else (links, monetization, age)."
+/>
+
+### Multicollinearity between rank features
+
+CrUX, Tranco, and Umbrella are correlated — they're all measuring some flavor of "popularity." For tree models (XGBoost, LightGBM), this is fine for accuracy but hurts interpretability. For linear models, it's a problem.
+
+**Practical approaches:**
+
+<Tabs>
+	<Tab label="For trees (recommended)">
+		Keep all rank features. Trees will split on whichever provides the most information gain at each node. The redundancy doesn't hurt prediction — it provides robustness when one source is missing.
+
+		Prune later with permutation importance if you need to reduce serving cost.
+	</Tab>
+	<Tab label="For linear models">
+		Collapse correlated ranks into a single "popularity score":
+
+		```python
+		import numpy as np
+
+		pop_score = np.nanmean([
+		    crux_log_rank,
+		    tranco_log_rank,
+		    cf_log_bucket,
+		    umbrella_log_rank,
+		], axis=0)
+
+		n_sources_present = crux_in + tranco_in + cf_in + umbrella_in
+		```
+
+		Or use PCA on the rank features and keep the first 1-2 components.
+	</Tab>
+</Tabs>
+
+### How many features is enough?
+
+With ~5,000-50,000 labeled domains, **20-25 well-chosen features** is the sweet spot. Research shows diminishing returns beyond ~30 features for this kind of domain-level prediction. Start with all ~35, then prune:
+
+<Stepper>
+	<Step>Train a baseline model with all features.</Step>
+	<Step>Run permutation importance on the validation set — this measures how much accuracy drops when you shuffle each feature.</Step>
+	<Step>Drop features with near-zero permutation importance.</Step>
+	<Step>Check for VIF (variance inflation factor) among remaining features — drop one from any pair with VIF above 10.</Step>
+	<Step>Retrain and verify no significant accuracy loss.</Step>
+</Stepper>
+
+<Callout variant="tip">
+Watch for overfitting on rare features. Binary flags like "has SSP X" might only be true for 50 domains in your training set — the model can memorize these. Prefer features with broad support across your labeled data.
+</Callout>
+
+---
+
+## Practice
+
+1. Write a Python function that takes a domain and returns its feature vector using the Tranco CSV and CrUX BigQuery data. Handle the case where the domain is missing from either source.
+
+2. Download today's Umbrella top-1M. How many entries are infrastructure domains (contain "cdn", "api", "static", "update")? What does this tell you about using Umbrella raw vs. filtered?
+
+3. Pick 10 domains from your labeled dataset. Manually extract ads.txt features for each. Do the features (DIRECT count, SSP count) correlate with what you know about their traffic?
+
+4. Compute `log10(rank)` for those 10 domains across CrUX, Tranco, and Umbrella. How correlated are the three? Do any domains rank very differently across sources?
+
+## Quiz
+
+<Quiz questions={[
+	{
+		q: "A domain has crux_rank=50000. What's the best way to encode this as a feature?",
+		options: [
+			"Use 50000 directly",
+			"log10(50000) ≈ 4.7, plus crux_in=1",
+			"Normalize to 0-1 by dividing by the max rank",
+			"Convert to a percentile",
+		],
+		answer: 1,
+		explain: "Log transform compresses the heavy-tailed rank distribution. Always pair with a binary presence flag (crux_in=1) so the model can distinguish 'ranked low' from 'not in CrUX at all.'"
+	},
+	{
+		q: "A domain is NOT in CrUX. What value should crux_log_rank get?",
+		options: [
+			"0 (zero traffic)",
+			"The mean rank of your training set",
+			"A sentinel beyond the list size, like log10(100000000) = 8",
+			"NaN (let the model handle it)",
+		],
+		answer: 2,
+		explain: "Use a sentinel value beyond the list's range (e.g., log10(1e8) for CrUX's ~18M origins). This tells the model 'less popular than everything in the list.' Don't impute the mean — it biases toward mid-tier. For tree models, NaN with a separate missing flag also works, but explicit sentinels are more portable."
+	},
+	{
+		q: "to_etld1('blog.example.co.uk') should return what?",
+		options: [
+			"co.uk",
+			"example.co.uk",
+			"blog.example.co.uk",
+			"example.com",
+		],
+		answer: 1,
+		explain: "The effective TLD is .co.uk (it's on the Public Suffix List). Adding one label gives example.co.uk — the registrable domain. Naive string splitting would wrongly return co.uk."
+	},
+	{
+		q: "Which feature collection should happen daily vs. monthly?",
+		options: [
+			"CrUX daily, Tranco monthly",
+			"Tranco and Umbrella daily, CrUX monthly",
+			"Everything daily for maximum freshness",
+			"Everything monthly to save costs",
+		],
+		answer: 1,
+		explain: "Tranco and Umbrella publish daily lists and have high churn — daily collection captures rank momentum. CrUX publishes monthly on BigQuery (2nd Tuesday of the next month). ads.txt changes slowly (weekly crawl). Match your collection cadence to the source's update cadence."
+	},
+	{
+		q: "CrUX, Tranco, and Umbrella log-ranks are correlated. How should you handle this in a gradient boosting model?",
+		options: [
+			"Drop all but one to avoid multicollinearity",
+			"Keep all three — trees handle correlation fine and benefit from redundancy",
+			"Average them into a single 'popularity score'",
+			"Apply PCA first",
+		],
+		answer: 1,
+		explain: "Tree-based models (XGBoost, LightGBM) are not harmed by multicollinearity — they split on whichever feature is most informative at each node. Keeping all three provides robustness when a domain is missing from one source. Collapsing or PCA is useful for linear models but unnecessary for trees."
+	},
+]} />
+
+## References
+
+- [CrUX rank magnitude — Chrome for Developers](https://developer.chrome.com/blog/crux-rank-magnitude)
+- [CrUX ranking to pageviews — power law fit](https://thib.me/crux-ranking-to-pageviews)
+- [tldextract — Python library](https://github.com/john-kurkowski/tldextract)
+- [Public Suffix List](https://publicsuffix.org/learn/)
+- [Tranco methodology](https://tranco-list.eu/methodology)
+- [DataForSEO — How ETV is calculated](https://dataforseo.com/help-center/how-is-etv-calculated)

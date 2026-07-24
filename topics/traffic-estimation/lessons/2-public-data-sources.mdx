@@ -1,0 +1,426 @@
+import { Callout, Quiz, Stepper, Step, Reveal, Ordering, Tabs, Tab, Mermaid, Chart, CodeBlock } from "@learn/components";
+
+# Public Data Sources & Signals
+
+<div className="lesson-meta">Survey the free and cheap inputs you can actually feed into a traffic estimation model.</div>
+
+You don't need a clickstream panel to estimate traffic. You need **features that correlate with traffic** and **labels to train against**. This section covers every useful public data source — what it actually tells you, how to access it, and where it breaks down.
+
+## The Signal Landscape
+
+Not all data sources are created equal. Here's how they map to what we're building:
+
+<Mermaid chart={`flowchart LR
+	subgraph "Traffic Proxies"
+		A["CrUX<br/>Chrome navigations"]
+		B["Tranco<br/>Ensemble rank"]
+		C["Cloudflare Radar<br/>DNS popularity"]
+		D["Umbrella<br/>DNS queries"]
+	end
+	subgraph "Content Signals"
+		E["SEO APIs<br/>Organic traffic est."]
+		F["ads.txt<br/>Monetization graph"]
+		G["Open PageRank<br/>Link authority"]
+		H["Domain age<br/>RDAP/Whois"]
+	end
+	A --> I["Feature Vector"]
+	B --> I
+	C --> I
+	D --> I
+	E --> I
+	F --> I
+	G --> I
+	H --> I
+	I --> J["Model"]
+`} />
+
+| Source | What it measures | Free? | Best signal for |
+|--------|-----------------|-------|-----------------|
+| CrUX | Real Chrome browsing (bucketed) | Yes | Closest proxy to actual web visits |
+| Tranco | Consensus rank across 5 lists | Yes | Stable, manipulation-resistant popularity |
+| Cloudflare Radar | DNS user population (1.1.1.1) | Yes | Geo breakdown, trending domains |
+| Umbrella | DNS query volume (OpenDNS) | Yes | Raw popularity prior |
+| DataForSEO | Organic keyword rank x volume x CTR | Pay-as-you-go | Organic search traffic estimate |
+| ads.txt | Authorized ad sellers | Free crawl | Publisher classification |
+| Open PageRank | Link graph authority score | Yes | Domain authority feature |
+| Domain age | Registration date via RDAP | Yes | Legitimacy/maturity feature |
+
+## The Big Three: Popularity Proxies
+
+### 1. Chrome UX Report (CrUX)
+
+CrUX is the **closest public proxy to real browsing**. Google collects anonymized navigation data from Chrome users who opt in (Chrome Sync enabled, no passphrase), then publishes origin-level popularity ranks.
+
+**What you get:** Rank buckets, not visit counts. An origin in bucket `10000` means it's between the 5,001st and 10,000th most-visited origin in Chrome.
+
+**Bucket thresholds:**
+
+| Bucket value | Meaning |
+|-------------|---------|
+| 1,000 | Top 1K origins |
+| 5,000 | Ranks 1,001–5,000 |
+| 10,000 | Ranks 5,001–10,000 |
+| 50,000 | Ranks 10,001–50,000 |
+| 100,000 | Ranks 50,001–100,000 |
+| 500,000 | Ranks 100,001–500,000 |
+| 1,000,000 | Ranks 500,001–1,000,000 |
+| 5,000,000+ | Long tail |
+
+**Coverage:** ~18M origins as of 2026. If a site isn't in CrUX, it's below the popularity threshold — itself a useful signal.
+
+<Tabs>
+	<Tab label="BigQuery (for rank data)">
+		The REST API does **not** return popularity rank — only performance metrics. You need BigQuery for rank data.
+
+		```sql
+		-- Get rank for a single origin
+		SELECT origin, experimental.popularity.rank AS rank
+		FROM `chrome-ux-report.experimental.global`
+		WHERE yyyymm = 202606
+		  AND origin = 'https://www.example.com';
+
+		-- All origins in the top 100K
+		SELECT DISTINCT origin, experimental.popularity.rank AS rank
+		FROM `chrome-ux-report.experimental.global`
+		WHERE yyyymm = 202606
+		  AND experimental.popularity.rank <= 100000
+		ORDER BY rank, origin;
+
+		-- Country-specific ranks
+		SELECT DISTINCT origin, experimental.popularity.rank AS rank
+		FROM `chrome-ux-report.experimental.country`
+		WHERE yyyymm = 202606
+		  AND country_code = 'us'
+		  AND experimental.popularity.rank <= 10000;
+		```
+	</Tab>
+	<Tab label="REST API (performance only)">
+		The free API (150 req/min, no cost) returns Core Web Vitals but not rank. Useful for one thing: a **404 response means the origin isn't popular enough to be in CrUX** — a binary feature.
+
+		```bash
+		curl -s -X POST \
+		  'https://chromeuxreport.googleapis.com/v1/records:queryRecord?key=API_KEY' \
+		  -H 'Content-Type: application/json' \
+		  -d '{"origin": "https://www.example.com"}'
+		```
+
+		200 = in CrUX (popular enough). 404 = below threshold.
+	</Tab>
+</Tabs>
+
+<Callout variant="key">
+CrUX is the single most valuable free signal for traffic estimation. Research by Ruth et al. (2022) found CrUX was the **most accurate** top list compared to Cloudflare's ground truth. But it only gives you order-of-magnitude buckets, not counts — and it's Chrome-only (no Safari, Firefox, or iOS Chrome).
+</Callout>
+
+**Cost:** REST API is free (150 QPM). BigQuery queries cost ~$5/TB after the 1 TB/month free tier. Prefer the `experimental.global` table or `materialized.metrics_summary` to minimize scan size.
+
+### 2. Tranco
+
+Tranco is a research-grade top-1M domain ranking that averages five separate lists over 30 days to resist manipulation and reduce volatility.
+
+**Why it exists:** The NDSS 2019 paper showed Alexa rankings had ~50% daily churn and could be gamed trivially. Tranco cuts daily churn to ~0.6%.
+
+**Source lists aggregated:**
+
+| List | Signal type |
+|------|------------|
+| CrUX | Chrome navigations (monthly, bucketed) |
+| Cloudflare Radar | DNS popularity from 1.1.1.1 (weekly, bucketed) |
+| Cisco Umbrella | OpenDNS query volume (daily) |
+| Majestic | Backlink referring subnets (daily) |
+| Farsight | Passive DNS cache misses (daily) |
+
+**Aggregation method:** Dowdall scoring — rank 1 gets 1 point, rank 2 gets 1/2, rank N gets 1/N, unranked gets 0. Averaged over 30 days. Bucketed sources (CrUX, Radar) get normalized to geometric-mean virtual ranks.
+
+**How to access:**
+
+<CodeBlock language="bash" title="Download latest CSV" code={`# Daily CSV (updated ~00:00 UTC)
+curl -o tranco.csv.zip https://tranco-list.eu/top-1m.csv.zip
+unzip tranco.csv.zip
+# Format: rank,domain
+# 1,google.com
+# 2,facebook.com
+# 3,youtube.com`} />
+
+<CodeBlock language="bash" title="API — rank history for a domain" code={`curl 'https://tranco-list.eu/api/ranks/domain/example.com'
+# Response:
+# {"ranks": [
+#   {"date": "2026-07-20", "rank": 12345},
+#   {"date": "2026-07-21", "rank": 12201}
+# ]}`} />
+
+**Cost:** Free. API rate limit ~1 QPS. Also available on BigQuery.
+
+**As a feature:** Strong consensus popularity signal. If CrUX, Radar, and Umbrella all agree a domain is mid-list, confidence is high. Not a visit estimator itself — Majestic measures links, not traffic.
+
+### 3. Cloudflare Radar
+
+Cloudflare estimates **relative user-population size** from its 1.1.1.1 DNS resolver and CDN network. This is DNS-derived, not browser-based.
+
+**What you get:**
+- **Ordered top 100** globally and per country (daily)
+- **Unordered buckets** for top 1M: 200, 500, 1K, 2K, 5K, 10K, 20K, 50K, 100K, 200K, 500K, 1M
+
+<CodeBlock language="bash" title="Look up a single domain" code={`curl "https://api.cloudflare.com/client/v4/radar/ranking/domain/example.com?includeTopLocations=true" \\
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+
+# Response:
+# {
+#   "result": {
+#     "details_0": {
+#       "bucket": "2000",
+#       "top_locations": [
+#         {"locationCode": "US", "locationName": "United States", "rank": 1}
+#       ]
+#     }
+#   }
+# }`} />
+
+<CodeBlock language="bash" title="Top domains by country" code={`curl "https://api.cloudflare.com/client/v4/radar/ranking/top?limit=10&location=DE" \\
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"`} />
+
+**Cost:** Free with any Cloudflare account. Rate limit: 1,200 req / 5 min.
+
+**License: CC BY-NC 4.0** — free for research and internal use, but the non-commercial clause matters if you ever productize.
+
+<Callout variant="warn">
+DNS popularity is **not** web traffic. Infrastructure domains (`googleapis.com`, `gstatic.com`), ad trackers, email servers, and API endpoints all generate DNS queries without any human visiting a webpage. Always filter known infrastructure domains when using Radar or Umbrella as traffic features.
+</Callout>
+
+**Unique value:** Cloudflare Radar is the best free source for **per-country domain popularity** — useful for the geo estimation head of your model.
+
+## Ad-Tech Supply Chain: ads.txt
+
+Every publisher that sells programmatic ads is supposed to host an `ads.txt` file listing their authorized sellers. It's a plaintext file at the domain root:
+
+<CodeBlock language="text" title="https://nytimes.com/ads.txt (excerpt)" code={`OWNERDOMAIN=nytimes.com
+google.com, pub-4177862836555934, DIRECT
+rubiconproject.com, 12330, DIRECT
+pubmatic.com, 158573, DIRECT, 5d62403b186f2ace
+indexexchange.com, 184733, DIRECT
+openx.com, 540804929, DIRECT`} />
+
+Each line says: "This SSP, this account ID, DIRECT (we control it) or RESELLER (intermediary)."
+
+**What you can infer for traffic estimation:**
+
+| Signal | What it tells you |
+|--------|------------------|
+| File exists with major SSPs | Monetized publisher — likely a content site with meaningful traffic |
+| No ads.txt or 404 | Unmonetized, SaaS, e-commerce, or very small (not necessarily low traffic) |
+| Many DIRECT partners | Larger/more sophisticated ad operations |
+| `OWNERDOMAIN` / `MANAGERDOMAIN` | Corporate parent or exclusive monetization partner (Mediavine, Raptive, etc.) |
+| Number of SSP lines | Weak scale proxy — but some bloated files exist on small sites |
+
+**How to crawl:** `GET https://{domain}/ads.txt`. Files are tiny (KB). Crawl your domain list weekly at 1-5 req/s.
+
+<Callout variant="tip">
+ads.txt is most useful as a **categorical feature** (monetized publisher: yes/no, which SSPs, DIRECT count) rather than a numeric one. Combined with other signals, it helps the model distinguish content publishers from SaaS/e-commerce sites that have different traffic patterns.
+</Callout>
+
+## SEO APIs: Organic Traffic Estimates
+
+These tools estimate **organic search traffic only** using the keyword rank x volume x CTR model. The cheapest option for bulk pipelines is DataForSEO.
+
+**The model under the hood:**
+
+<CodeBlock language="text" title="How SEO tools estimate organic traffic" code={`estimated_organic_visits = sum over all keywords k:
+    search_volume(k) × CTR(rank_position(k))
+
+Typical clean-SERP CTR by position:
+  Position 1:  ~20-40%
+  Position 2:  ~12-19%
+  Position 3:  ~8-10%
+  Position 10: ~1-2%`} />
+
+<Tabs>
+	<Tab label="DataForSEO (recommended)">
+		**Pricing:** Pay-as-you-go, $50 minimum deposit, credits never expire.
+
+		Bulk traffic estimation: ~$0.0012/domain — meaning **1M domains costs ~$1,320**.
+
+		```bash
+		curl -X POST "https://api.dataforseo.com/v3/dataforseo_labs/google/domain_rank_overview/live" \
+		  -u "login:password" \
+		  -H "Content-Type: application/json" \
+		  -d '[{"target": "example.com", "language_name": "English", "location_code": 2840}]'
+
+		# Key response fields:
+		# metrics.organic.etv  → estimated organic traffic value (clicks/month)
+		# metrics.organic.count → number of ranked keywords
+		# metrics.organic.pos_1, pos_2_3, ... → rank distribution
+		```
+
+		For bulk: use `historical_bulk_traffic_estimation/live` — up to 1,000 domains per request, monthly history back to Oct 2020.
+	</Tab>
+	<Tab label="Open PageRank (free authority)">
+		Free 0-10 authority score from Common Crawl graph data. 30,000 domains/month free.
+
+		```bash
+		curl -X POST "https://openpagerank.keywordseverywhere.com/v1/domains/bulk" \
+		  -H "Authorization: Bearer YOUR_KEY" \
+		  -H "Content-Type: application/json" \
+		  -d '{"domains": ["github.com", "google.com"]}'
+
+		# Response:
+		# {"results": [{
+		#   "domain": "github.com",
+		#   "open_page_rank": 9.67,
+		#   "rank": 30,
+		#   "referring_domains": 282833
+		# }]}
+		```
+	</Tab>
+	<Tab label="Moz DA ($20/mo)">
+		Domain Authority (0-100) from Moz's link index.
+
+		```bash
+		curl -X POST "https://api.moz.com/jsonrpc" \
+		  -H "x-moz-token: YOUR_TOKEN" \
+		  -H "Content-Type: application/json" \
+		  -d '{"jsonrpc": "2.0", "id": "1",
+		       "method": "data.site.metrics.fetch.multiple",
+		       "params": {"data": {"targets": ["example.com"]}}}'
+		```
+
+		Starter tier: $20/mo for 3,000 rows. Free tier: 50 rows/month.
+	</Tab>
+</Tabs>
+
+<Callout variant="warn">
+SEO traffic estimates (`etv`) measure **organic Google search clicks only**. They miss direct traffic, social, referral, paid, email, and app traffic entirely. A SaaS site with huge direct traffic and minimal SEO will show near-zero `etv`. Always use this as one feature, not the whole estimate.
+</Callout>
+
+## Supplementary Signals
+
+These are weaker individually but useful as features in an ensemble:
+
+| Source | What it provides | Access | Cost |
+|--------|-----------------|--------|------|
+| **Cisco Umbrella** | DNS query rank (top 1M daily) | Free S3 download | Free |
+| **Common Crawl** | Web graph: PageRank, in-degree, referring hosts | Free HTTP download (~5 GiB compressed) | Free (compute costs) |
+| **Domain age** | Registration date via RDAP | Free (`curl https://rdap.org/domain/example.com`) | Free |
+| **Google Trends** | Brand search interest (0-100 relative index) | No official API; `pytrends` (fragile) | Free (unreliable) |
+| **BuiltWith / Wappalyzer** | Tech stack detection (has ads? WordPress? Shopify?) | Extensions free; APIs $250-1000/mo | Expensive for APIs |
+
+<Callout variant="info">
+Google Trends correlates with **brand awareness**, not site traffic. SparkToro found poor correlation between Trends data and actual visits. Use it cautiously — it's better for detecting trend direction than estimating magnitude.
+</Callout>
+
+## Putting It Together: The Feature Pipeline
+
+Here's the practical priority stack for building your feature set:
+
+<Ordering
+	items={[
+		{ id: "crux", label: "CrUX rank bucket (BigQuery) — closest proxy to real visits" },
+		{ id: "seo", label: "DataForSEO organic ETV — quantitative organic estimate" },
+		{ id: "tranco", label: "Tranco rank — stable consensus popularity" },
+		{ id: "adstxt", label: "ads.txt features — monetization classifier" },
+		{ id: "opr", label: "Open PageRank — free link authority" },
+		{ id: "radar", label: "Cloudflare Radar — geo popularity signal" },
+		{ id: "age", label: "Domain age via RDAP — maturity feature" },
+	]}
+	correct={["crux", "seo", "tranco", "adstxt", "opr", "radar", "age"]}
+	success="This is the recommended priority order — start with the highest-signal free sources, add paid/supplementary features as needed."
+	retry="Think about which sources provide the strongest signal for estimating web traffic volume."
+/>
+
+**Cost to cover 1M domains monthly:**
+
+| Source | Approximate cost |
+|--------|-----------------|
+| CrUX BigQuery | ~$5-20 (query costs) |
+| Tranco CSV | Free |
+| Cloudflare Radar | Free |
+| Umbrella CSV | Free |
+| DataForSEO bulk ETV | ~$1,320 |
+| Open PageRank | Free (30K/mo limit) |
+| ads.txt crawl | Free (your compute) |
+| Domain age | Free |
+| **Total** | **~$1,350/mo** |
+
+Compare that to SimilarWeb enterprise at $12,000-50,000+/year.
+
+---
+
+## Practice
+
+1. Query CrUX BigQuery for five domains you know the traffic of. What rank buckets do they fall in? Does the bucket ordering match reality?
+
+2. Download today's Tranco CSV. Pick 10 domains and compare their Tranco rank to their CrUX bucket. How well do they correlate?
+
+3. Fetch the ads.txt for three sites in different categories (a news site, a blog, and a SaaS product). What differences do you see? Which features could you extract?
+
+4. Call the DataForSEO domain rank overview for a domain you know the organic traffic of. How close is the `etv` to reality?
+
+## Quiz
+
+<Quiz questions={[
+	{
+		q: "Which public data source is the closest proxy to actual web browsing?",
+		options: [
+			"Cisco Umbrella (DNS queries)",
+			"Chrome UX Report (Chrome navigations)",
+			"Majestic (backlink graph)",
+			"Google Trends (search interest)",
+		],
+		answer: 1,
+		explain: "CrUX is based on real Chrome navigation data from opted-in users. Research by Ruth et al. (2022) found it the most accurate top list. DNS lists include non-web traffic; Majestic measures links; Trends measures search interest."
+	},
+	{
+		q: "You call the CrUX REST API for a domain and get a 404. What does this tell you?",
+		options: [
+			"The domain doesn't exist",
+			"The API is down",
+			"The domain is below CrUX's popularity threshold — likely a small site",
+			"The domain blocks Chrome users",
+		],
+		answer: 2,
+		explain: "A 404 from the CrUX API means the origin isn't popular enough to be included in the dataset (~18M origins qualify). This is itself a useful binary feature: 'in CrUX' vs 'not in CrUX.'"
+	},
+	{
+		q: "DataForSEO reports 50,000 monthly 'etv' for a domain. What does this number represent?",
+		options: [
+			"Total monthly visits from all sources",
+			"Estimated organic Google search clicks based on keyword rankings",
+			"Unique monthly visitors measured by a panel",
+			"DNS query volume for the domain",
+		],
+		answer: 1,
+		explain: "SEO tools compute etv as sum(search_volume × CTR(rank)) across tracked keywords. It estimates organic search clicks only — not direct, social, referral, paid, or app traffic."
+	},
+	{
+		q: "Why does Cloudflare Radar rank googleapis.com and gstatic.com in its top 10?",
+		options: [
+			"They get the most web visitors",
+			"DNS popularity includes infrastructure, APIs, and trackers — not just websites",
+			"Cloudflare has a partnership with Google",
+			"These domains serve Google Search results",
+		],
+		answer: 1,
+		explain: "DNS queries come from all kinds of services, not just human web browsing. Infrastructure domains, API endpoints, ad trackers, and CDNs generate huge DNS query volumes without corresponding website visits. Always filter these when using DNS-based sources."
+	},
+	{
+		q: "A site has a large ads.txt with 40+ DIRECT SSP entries. What can you infer?",
+		options: [
+			"The site has exactly 40 advertisers",
+			"It's likely a significant publisher with sophisticated ad operations",
+			"It has 40 times more traffic than a site with 1 DIRECT entry",
+			"The site is committing ad fraud",
+		],
+		answer: 1,
+		explain: "Many DIRECT SSP relationships indicate a publisher large enough to maintain direct accounts with multiple ad exchanges. It's a signal of scale and sophistication — but not a linear traffic metric. Some small sites have bloated ads.txt files."
+	},
+]} />
+
+## References
+
+- [Chrome UX Report documentation](https://developer.chrome.com/docs/crux)
+- [CrUX BigQuery — experimental.popularity.rank](https://developer.chrome.com/docs/crux/bigquery)
+- [Tranco — A Research-Oriented Top Sites Ranking](https://tranco-list.eu/)
+- [Cloudflare Radar Domain Rankings](https://developers.cloudflare.com/radar/investigate/domain-ranking-datasets/)
+- [DataForSEO API documentation](https://docs.dataforseo.com/)
+- [Open PageRank API](https://openpagerank.keywordseverywhere.com/)
+- [IAB ads.txt specification](https://iabtechlab.com/ads-txt/)
+- [Ruth et al. 2022 — Toppling Top Lists (IMC)](https://kcruth.com/papers/2022-Toplists.pdf)

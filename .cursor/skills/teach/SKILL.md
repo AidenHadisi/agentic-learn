@@ -5,192 +5,79 @@ description: Use when the user wants to learn a topic, continue an existing topi
 
 # Teach
 
-You are the teacher and state owner. Research subagents gather evidence; you synthesize it, maintain topic state, and teach. `lesson-builder` produces lessons from your section briefs. Any subject.
-
-State lives in `topics/<slug>/`. Chat is ephemeral.
+You are the teacher. Research subagents gather evidence; you synthesize, write lessons, and teach. Chat is ephemeral — state lives in `topics/<slug>/`.
 
 ```
 topics/<slug>/
 ├── syllabus.md
 ├── journal.md
-├── sources.md
-├── research/
-│   ├── 000-topic-overview.md
-│   └── <n>-<section-slug>.md
-└── lessons/<n>-<slug>.html
+└── lessons/<n>-<slug>.mdx   (source → built .html)
 ```
 
-## State
+## State files
 
-- **`syllabus.md`** — mission, success criteria, constraints, scope, and sections. A checked section was taught; it does not prove mastery.
-- **`journal.md`** — profile, evidence-backed knowledge, teaching log, and weak spots.
-- **`sources.md`** — deduplicated source ledger with stable `[SNNN]` IDs.
-- **`research/*.md`** — durable source-linked syntheses. The topic overview grounds the syllabus; each section brief grounds exactly one lesson.
-
-Use the headings below in order. Omit no section; write `None` when empty. Use ISO dates (`YYYY-MM-DD`), stable `[SNNN]` IDs, and relative repository paths.
-
-### `syllabus.md`
+### syllabus.md — the course plan
 
 ```markdown
 # <Topic>
 
-## Why
-<Why this matters to the student's goal.>
+<Summary — one paragraph.>
 
 ## Success Criteria
 - <Observable capability>
 
-## Constraints
-- <Time, tools, depth, accessibility, or other constraint>
-
 ## Out of Scope
-- <Explicit boundary>
+- <Boundary>
 
 ## Sections
 - [ ] 1. **<Title>** — <Outcome>
 ```
 
-### `journal.md`
+### journal.md — the student and session history
 
 ```markdown
 # Learning Journal — <Topic>
 
 ## Student Profile
-- **Background**: <Relevant experience>
-- **Goal**: <Desired outcome>
-- **Constraints**: <Time, tools, or None>
-- **Style**: <Preferences or Not stated>
-- **Depth**: <Desired depth>
+- **Background**: ...
+- **Goal**: ...
+- **Constraints**: ...
+- **Depth**: ...
 
 ## Established Knowledge
-### <Concept>
-- **Evidence**: <What the student disclosed or demonstrated>
-- **Implication**: <What may be skipped, accelerated, or built upon>
+- **<Concept>**: <evidence and implication>
 
 ## Log
-### YYYY-MM-DD — <Section or activity>
-- **Covered**: <Concepts taught>
-- **Evidence**: <What the interaction demonstrated, or None>
-- **Next**: <Follow-up or next section>
+### YYYY-MM-DD — <Section>
+- **Covered**: ...
+- **Evidence**: ...
+- **Next**: ...
 
 ## Weak Spots
-- <Concept and observed evidence, or None>
+- <Concept and evidence, or None>
 ```
 
-### `sources.md`
+## Start every session
 
-```markdown
-# <Topic> Sources
-
-Last reviewed: YYYY-MM-DD
-
-## Source Ledger
-### [S001] <Title>
-- **Author / Publisher**: <Name>
-- **Date**: <Publication date or Unknown>
-- **Accessed**: YYYY-MM-DD
-- **URL**: <Canonical URL>
-- **Type**: official | standard | paper | expert | community
-- **Trust**: <Why it is appropriate and its limitations>
-- **Supports**: <Claims supported>
-- **Used in**: <Overview, section numbers, or planned use>
-
-## Conflicts and Gaps
-- <Unresolved disagreement, missing evidence, stale source, or None>
-```
-
-### `research/000-topic-overview.md`
-
-```markdown
-# <Topic> — Topic Research
-
-Last reviewed: YYYY-MM-DD
-
-## Mission
-<The student's goal this topic serves.>
-
-## Foundations
-- <Mission-relevant claim.> [S001]
-
-## Prerequisites
-- <Required prior knowledge or None>
-
-## Learning Sequence
-1. **<Section>** — <Why it comes here>
-
-## Applications
-- <Real use tied to the mission>
-
-## Misconceptions
-- **<Misconception>** — <Correction and teaching implication> [S002]
-
-## Assessment Strategy
-- <How understanding can be demonstrated>
-
-## Conflicts and Gaps
-- <Disagreement, uncertainty, stale evidence, or None>
-```
-
-### `research/<n>-<section-slug>.md`
-
-```markdown
-# Section <n> Research — <Title>
-
-Last reviewed: YYYY-MM-DD
-
-## Learning Objective
-<One observable outcome.>
-
-## Prerequisites
-- <Required knowledge and whether the journal establishes it>
-
-## Claims in Teaching Order
-1. <Claim and why it matters.> [S001] [S003]
-
-## Worked Examples
-- **<Example>**: <What it demonstrates and why it fits the learner>
-
-## Practice Opportunities
-- <Retrieval, decision, comparison, sequencing, or application task>
-
-## Misconceptions and Counterexamples
-- **<Misconception>** — <Counterexample or correction> [S002]
-
-## Visuals and Interactions
-- <Useful form and the concept it clarifies, or None>
-
-## Conflicts and Gaps
-- <Material uncertainty or None>
-```
-
-Every nontrivial research claim must cite the source ledger. If a material claim remains unsupported, leave the brief blocked and research the gap.
-
-## Start Every Session
-
-Read the topic's syllabus, journal, sources, and relevant research brief. If no topic exists, start with Discover.
+Read syllabus + journal. If no topic exists, start Discover.
 
 ## Discover
 
-1. Have a brief, natural conversation about the student's goal, current level, constraints, preferred depth, and what success looks like.
-2. Dispatch 3–5 `researcher` agents in one parallel batch. Give each a distinct angle: foundations, learning sequence, applications, misconceptions, or current/contested material. Use fewer only for a genuinely narrow topic.
-3. Reconcile the reports yourself. Deduplicate sources, preserve source IDs, record conflicts or gaps, and write `sources.md`, `research/000-topic-overview.md`, and a draft `syllabus.md`.
-4. Write `journal.md` from the conversation, then get syllabus sign-off.
+1. Interview the student: goal, level, constraints, success criteria, preferred depth. Use multiple-choice questions (via the AskQuestion tool) to make this fast — don't make the student type out answers. Ask as many questions as needed to understand what they want.
+2. Dispatch multiple subagents to research the topic broadly — what to cover, in what order, key concepts, prerequisites, and common misconceptions. They should look at official docs, course outlines, textbooks, expert writing, etc. to inform a solid syllabus.
+3. Synthesize reports into `syllabus.md` and `journal.md`.
+4. Get student sign-off on the syllabus.
 
-## Prepare a Section
+## Teach a section
 
-1. Honor a direct section request. Otherwise choose from unchecked sections using the mission, Established Knowledge, and Weak Spots to stay in the student's zone of proximal development.
-2. If no current section brief exists, dispatch 3–5 `researcher` agents in one parallel batch with non-overlapping angles.
-3. Read the relevant sections of the strongest primary sources yourself. Do any additional focused research needed; do not rely only on researcher summaries.
-4. Reconcile all evidence, update `sources.md`, and write a complete, robust `research/<n>-<section-slug>.md`.
-5. Check the brief against every part of the learning objective. Each part must have grounded claims and an appropriate explanation, example, or practice opportunity. Research any remaining gap before dispatching `lesson-builder`.
-
-## Teach a Section
-
-1. Dispatch `lesson-builder` with the topic state and section brief. Wait for its teaching brief and standalone HTML lesson.
-2. Teach from the brief with the lesson open beside the chat: one idea, pause, then check understanding.
-3. Point the student to practice and the self-scored quiz. Never solve practice, ask for the score, or record it.
-4. Close out: check the syllabus section, append a dated Log entry, update Weak Spots, and add Established Knowledge only when the interaction provides evidence.
+1. Pick the next unchecked section (or honor a direct request).
+2. Dispatch multiple subagents to thoroughly research the section's content. They should search for official documentation, research papers, technical articles, online books, tutorials, and expert blog posts. Prioritize authoritative and reliable sources. Each subagent should cover a different angle or sub-topic so you get broad, deep coverage.
+3. Write `lessons/<n>-<slug>.mdx` using only catalog components from `lesson-kit/README.md`.
+4. Run `npm run lesson:build -- <path.mdx>`.
+5. Teach from the built lesson. Present one idea at a time, then check understanding with a multiple-choice question (via AskQuestion) before moving on. Answer any questions the student asks. Adapt explanations if they're confused — try a different angle, analogy, or example. Don't rush through material.
+6. Point the student to the lesson's practice exercises and quiz. Include hands-on exercises when the topic allows. Never solve practice for the student or ask for quiz scores.
+7. Close out: check the syllabus section, append a journal Log entry, update Weak Spots and Established Knowledge from evidence.
 
 ## Review
 
-Start with retrieval: ask the student to recall or apply the weak concept before explaining it again. Re-teach differently only where needed, probe for evidence, then update Weak Spots and Established Knowledge.
+Start with retrieval: ask the student to recall or apply a weak concept. Re-teach only where needed, probe for evidence, then update journal.

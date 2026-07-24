@@ -1,32 +1,37 @@
 {
-  "name": "learn",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
-  "description": "A personal learning environment where an AI agent acts as a teacher. Each topic lives in its own directory with a syllabus, a journal, and one self-contained HTML lesson per section — everything needed to continue learning across sessions.",
-  "scripts": {
-    "lesson:new": "node scripts/lesson.mjs new",
-    "lesson:build": "node scripts/lesson.mjs build",
-    "gallery:build": "node scripts/lesson.mjs build templates/component-gallery.html",
-    "validate:html": "node scripts/validate-html.mjs",
-    "validate:state": "node scripts/validate-state.mjs",
-    "validate": "npm run validate:html && npm run validate:state",
-    "check": "npm run validate"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "chart.js": "^4.5.1",
-    "cytoscape": "^3.34.0",
-    "katex": "^0.17.0",
-    "mermaid": "^11.16.0"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.1",
-    "html-validate": "^10.9.0"
-  }
+	"name": "learn",
+	"version": "2.0.0",
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": ">=22"
+	},
+	"description": "A personal learning environment with MDX interactive lessons. Each topic has a syllabus, journal, and self-contained HTML lessons built from compact MDX sources.",
+	"scripts": {
+		"lesson:new": "node scripts/lesson.mjs new",
+		"lesson:build": "node scripts/lesson.mjs build",
+		"gallery:build": "node scripts/lesson.mjs build lesson-kit/gallery.mdx",
+		"validate:state": "node scripts/validate-state.mjs",
+		"check": "npm run validate:state"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"@mdx-js/react": "^3.1.0",
+		"@mdx-js/rollup": "^3.1.0",
+		"chart.js": "^4.5.1",
+		"katex": "^0.18.1",
+		"mermaid": "^11.16.0",
+		"react": "^19.1.0",
+		"react-dom": "^19.1.0",
+		"rehype-katex": "^7.0.1",
+		"remark-gfm": "^4.0.1",
+		"remark-math": "^6.0.0"
+	},
+	"devDependencies": {
+		"@vitejs/plugin-react": "^4.5.2",
+		"vite": "^6.3.5",
+		"vite-plugin-singlefile": "^2.0.3"
+	}
 }

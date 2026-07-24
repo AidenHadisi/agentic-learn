@@ -1,0 +1,420 @@
+import { Callout, Quiz, Stepper, Step, Tabs, Tab, CodeBlock } from "@learn/components";
+
+# Modeling Monthly Visits
+
+<div className="lesson-meta">Train, calibrate, and evaluate a regression model that predicts monthly visits from domain features.</div>
+
+You have features and labels. Now you need a model that maps one to the other. This section covers model selection, training setup, calibration, evaluation, and confidence intervals — everything needed to go from a feature table to a deployable estimator.
+
+## Model Selection
+
+### Log-linear regression: the natural baseline
+
+Traffic follows a power law: `visits ∝ rank^(-α)`. On log-log axes this is nearly linear. Research on SimilarWeb data found `visits ≈ 4.1 × 10¹¹ × rank^(-1.19)` — so `log(visits) ≈ a + b × log(rank)`.
+
+A Ridge regression on your log-transformed features is the right first model:
+
+<CodeBlock language="python" title="Log-linear baseline" code={`from sklearn.linear_model import Ridge
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+
+y = np.log1p(monthly_visits)
+
+model = make_pipeline(StandardScaler(), Ridge(alpha=1.0))
+model.fit(X_train, y)
+
+pred_visits = np.expm1(model.predict(X_test))`} />
+
+Why bother with a baseline? Interpretable coefficients tell you which features matter. And it sets a clear bar for your GBM to beat — if gradient boosting only improves Spearman by 0.02, your features are the bottleneck, not your model.
+
+### Gradient boosting: the workhorse
+
+For heterogeneous tabular data (mix of log-ranks, counts, binary flags, missing values), **LightGBM dominates**:
+
+| Factor | Why GBMs win here |
+|--------|-------------------|
+| Mixed feature types | Trees handle numeric + binary + ordinal natively |
+| Missing values | LightGBM routes missing values to the best split direction — no imputation needed |
+| Non-linear interactions | "High ETV + old domain + has ads.txt" is a different signal than the sum of parts |
+| Sample size (5K-50K) | Sweet spot for trees; too small for deep learning |
+| Quantile objectives | Built-in support for prediction intervals |
+
+<Callout variant="key">
+Research consistently shows gradient boosted trees outperform neural networks on tabular data at this scale (Grinsztajn et al. 2022, McElfresh et al. 2023). Don't overcomplicate — LightGBM with proper tuning is the right choice.
+</Callout>
+
+### What about other models?
+
+| Model | Use it when | Skip it when |
+|-------|-------------|--------------|
+| Random Forest | Very small n (under ~2K), need quick sanity check | You have enough data for GBM tuning |
+| Neural Networks | Later, if you add embeddings (niche, TLD) at much larger scale | Under ~50K rows with 30 tabular features |
+| Ensemble (RF + GBM) | Final production model for marginal gains | Early iterations — focus on features first |
+
+## Training Setup
+
+### Stratified splits by traffic tier
+
+Traffic is extremely long-tailed. Most domains in your labeled set are small; few are large. A random split can put all your 250K+ sites in the training set and none in validation — making large-site MAPE unmeasurable.
+
+<CodeBlock language="python" title="Stratified train/val/test split" code={`import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+bins = [0, 5_000, 25_000, 50_000, 100_000, 250_000, np.inf]
+labels = ["<5K", "5-25K", "25-50K", "50-100K", "100-250K", "250K+"]
+tier = pd.cut(monthly_visits, bins=bins, labels=labels)
+
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X, y_log, test_size=0.3, stratify=tier, random_state=42
+)
+X_val, X_test, y_val, y_test = train_test_split(
+    X_temp, y_temp, test_size=0.5,
+    stratify=tier[X_temp.index], random_state=42
+)
+# 70% train / 15% val / 15% test — each tier proportionally represented`} />
+
+### Sample weighting
+
+Without weighting, the model optimizes mostly for small sites (they're 80%+ of your data). Use inverse-frequency tier weights:
+
+<CodeBlock language="python" title="Tier-based sample weights" code={`tier_counts = np.bincount(tier_train_encoded)
+w = 1.0 / tier_counts[tier_train_encoded]
+w = w / w.mean()  # normalize so mean weight ≈ 1
+
+model.fit(X_train, y_train, sample_weight=w,
+          eval_set=[(X_val, y_val)],
+          eval_sample_weight=[np.ones(len(y_val))])  # unweighted val`} />
+
+<Callout variant="tip">
+Use unweighted validation for early stopping. Weighted training tells the model to care about all tiers; unweighted validation gives you an honest global metric.
+</Callout>
+
+## LightGBM Training
+
+### Starting hyperparameters
+
+<CodeBlock language="python" title="LightGBM with early stopping" code={`import lightgbm as lgb
+
+params = {
+    "objective": "regression",
+    "metric": "mae",
+    "learning_rate": 0.05,
+    "n_estimators": 3000,          # high ceiling; early stopping picks the real count
+    "num_leaves": 31,
+    "max_depth": -1,
+    "min_child_samples": 40,       # increase toward 100 if n < 10K
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_alpha": 0.1,
+    "reg_lambda": 1.0,
+    "random_state": 42,
+    "verbose": -1,
+}
+
+model = lgb.LGBMRegressor(**params)
+model.fit(
+    X_train, y_train,
+    sample_weight=w,
+    eval_set=[(X_val, y_val)],
+    callbacks=[
+        lgb.early_stopping(stopping_rounds=100),
+        lgb.log_evaluation(period=0),
+    ],
+)
+print(f"Best iteration: {model.best_iteration_}")`} />
+
+### Key tuning knobs
+
+| Parameter | What it controls | Start | Danger zone |
+|-----------|-----------------|-------|-------------|
+| `learning_rate` | Step size per tree | 0.05 | Above 0.2 with many trees |
+| `num_leaves` | Tree complexity | 31 | Above 63 on small datasets |
+| `min_child_samples` | Minimum samples per leaf | 40 | Below 10 on under 10K rows |
+| `subsample` | Row sampling fraction | 0.8 | 1.0 always = no stochasticity |
+| `colsample_bytree` | Feature sampling fraction | 0.8 | 1.0 with correlated rank features |
+| `reg_alpha` / `reg_lambda` | L1 / L2 regularization | 0.1 / 1.0 | 0 with noisy features |
+
+### Hyperparameter tuning with Optuna
+
+<CodeBlock language="python" title="Optuna tuning loop" code={`import optuna
+from scipy.stats import spearmanr
+from sklearn.model_selection import StratifiedKFold
+
+def objective(trial):
+    params = {
+        "learning_rate": 0.05,  # fix LR; don't tune both LR and n_estimators
+        "n_estimators": 3000,
+        "num_leaves": trial.suggest_int("num_leaves", 15, 63),
+        "max_depth": trial.suggest_int("max_depth", 3, 8),
+        "min_child_samples": trial.suggest_int("min_child_samples", 20, 100),
+        "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+        "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 10.0, log=True),
+        "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 10.0, log=True),
+    }
+    cv = StratifiedKFold(5, shuffle=True, random_state=42)
+    scores = []
+    for tr, va in cv.split(X, tier):
+        m = lgb.LGBMRegressor(**params, verbose=-1)
+        m.fit(X.iloc[tr], y[tr],
+              eval_set=[(X.iloc[va], y[va])],
+              callbacks=[lgb.early_stopping(50, verbose=False)])
+        scores.append(spearmanr(y[va], m.predict(X.iloc[va])).correlation)
+    return np.mean(scores)
+
+study = optuna.create_study(direction="maximize")
+study.optimize(objective, n_trials=40)`} />
+
+<Callout variant="warn">
+Fix the learning rate (0.03-0.05) and let early stopping choose the tree count. Tuning both `learning_rate` and `n_estimators` freely leads to degenerate combinations where Optuna picks high LR + few trees (fast but poor) or low LR + max trees (slow, may overfit).
+</Callout>
+
+## Calibration
+
+Even a well-trained model has systematic biases — it might consistently over-predict small sites and under-predict large ones. Calibration corrects this.
+
+### Isotonic regression (the go-to)
+
+Isotonic regression fits a monotone step function mapping raw predictions to calibrated predictions. Fit it on a **held-out** calibration set (your validation set works):
+
+<CodeBlock language="python" title="Post-hoc isotonic calibration" code={`from sklearn.isotonic import IsotonicRegression
+
+iso = IsotonicRegression(out_of_bounds="clip")
+iso.fit(model.predict(X_val), y_val)  # both on log1p scale
+
+y_test_cal = iso.predict(model.predict(X_test))
+visits_cal = np.expm1(y_test_cal)`} />
+
+### Per-tier calibration
+
+Bias differs by traffic tier. SimilarWeb is worst under 5K, strongest at 5K-100K. Fit separate calibrators:
+
+<CodeBlock language="python" title="Tier-specific calibration" code={`calibrators = {}
+for t in np.unique(tier_val):
+    mask = tier_val == t
+    if mask.sum() < 20:  # not enough samples
+        continue
+    iso = IsotonicRegression(out_of_bounds="clip")
+    iso.fit(y_val_pred[mask], y_val[mask])
+    calibrators[t] = iso
+
+def calibrate(pred, tier):
+    if tier in calibrators:
+        return calibrators[tier].predict([pred])[0]
+    return pred  # fall back to uncalibrated`} />
+
+### The ratio method (from Ahrefs research)
+
+If you know the real traffic for *your* site and the tool's estimate for both you and a competitor, the ratio is more stable than either absolute number:
+
+```
+competitor_actual ≈ competitor_estimate × (your_actual / your_estimate)
+```
+
+In production: store `median(actual / predicted)` per niche and tier, then multiply predictions by this correction factor.
+
+## Evaluation Metrics
+
+### The metrics that matter
+
+<Tabs>
+	<Tab label="Spearman (primary)">
+		For competitive intelligence — "is site A bigger than site B?" — rank correlation is the most important metric.
+
+		```python
+		from scipy.stats import spearmanr
+		rho, p = spearmanr(y_true, y_pred)
+		# Target: >= 0.75 (realistic); 0.85+ (excellent)
+		```
+
+		Commercial tools achieve 0.79-0.95 rank correlation. This is what to optimize for.
+	</Tab>
+	<Tab label="MAPE by tier (secondary)">
+		Global MAPE is meaningless under Zipf — it's dominated by abundant small sites. Always report per tier:
+
+		```python
+		for t in sorted(np.unique(tier_test)):
+		    mask = tier_test == t
+		    true_v = np.expm1(y_test[mask])
+		    pred_v = np.expm1(y_pred[mask])
+		    mape = np.mean(
+		        np.abs(true_v - pred_v) / np.clip(true_v, 1, None)
+		    ) * 100
+		    print(f"Tier {t}: MAPE = {mape:.1f}%")
+		```
+	</Tab>
+	<Tab label="Median log error (robust)">
+		Median absolute error on the log scale is robust to outliers and interpretable as a multiplicative factor:
+
+		```python
+		medae = np.median(np.abs(
+		    np.log1p(y_true) - np.log1p(y_pred)
+		))
+		factor = np.expm1(medae)
+		# medae=0.4 → typical factor ≈ 1.5× (50% off)
+		```
+	</Tab>
+</Tabs>
+
+### Realistic targets
+
+| Metric | Good | Excellent | Context |
+|--------|------|-----------|---------|
+| Spearman rank correlation | 0.75+ | 0.85+ | Ahrefs organic: 0.76; SimilarWeb-GA: ~0.95 |
+| Mid-tier MAPE (5K-100K) | 30-50% | 20-30% | Ahrefs median: 49.5% |
+| % within ±30% (mid-size) | 40-55% | 60%+ | SimilarWeb: ~63% on large sites |
+| Under 5K visits | Refuse or flag | Refuse or flag | SimilarWeb hides these |
+
+<Callout variant="key">
+Always evaluate per-tier. A model with 25% global MAPE might have 15% on mid-tier sites and 200% on the long tail. The global number hides the failures that matter.
+</Callout>
+
+## Confidence Intervals
+
+A point estimate without uncertainty is a lie. Your model routinely misses by 2x — users need to know when to trust it and when not to.
+
+### Quantile regression with LightGBM
+
+Train separate models for different quantiles to get prediction intervals:
+
+<CodeBlock language="python" title="80% prediction interval" code={`def fit_quantile(alpha):
+    m = lgb.LGBMRegressor(
+        objective="quantile", alpha=alpha,
+        learning_rate=0.05, n_estimators=2000,
+        num_leaves=31, min_child_samples=40,
+        subsample=0.8, colsample_bytree=0.8,
+        verbose=-1,
+    )
+    m.fit(X_train, y_train,
+          eval_set=[(X_val, y_val)],
+          callbacks=[lgb.early_stopping(100, verbose=False)])
+    return m
+
+q10 = fit_quantile(0.1)   # 10th percentile (lower bound)
+q50 = fit_quantile(0.5)   # median
+q90 = fit_quantile(0.9)   # 90th percentile (upper bound)
+
+lo  = q10.predict(X_test)
+mid = q50.predict(X_test)
+hi  = q90.predict(X_test)
+
+# Fix quantile crossing (lower must be <= upper)
+lo = np.minimum(lo, mid)
+hi = np.maximum(hi, mid)
+
+visits_lo  = np.expm1(lo)
+visits_mid = np.expm1(mid)
+visits_hi  = np.expm1(hi)`} />
+
+### When to refuse an estimate
+
+<CodeBlock language="python" title="Refusal rules" code={`def should_refuse(row, lo, mid, hi):
+    width = np.expm1(hi) / max(np.expm1(lo), 1)
+    missing_rate = row[feature_cols].isna().mean()
+
+    if mid < np.log1p(5_000):
+        return "below_reporting_threshold"
+    if missing_rate > 0.5:
+        return "insufficient_features"
+    if width > 10:  # 10x wide 80% interval
+        return "too_uncertain"
+    return None  # OK to serve`} />
+
+<Callout variant="tip">
+SimilarWeb hides estimates below ~5,000 monthly visits. This is the right call — accuracy collapses on the long tail. Set a floor and communicate it to users. A "no estimate" is more trustworthy than a garbage number.
+</Callout>
+
+## Putting It All Together
+
+<Stepper>
+	<Step>**Baseline**: Train a Ridge regression on log-transformed features → `log1p(visits)`. Measure Spearman and MAPE by tier.</Step>
+	<Step>**GBM**: Train LightGBM with early stopping and tier weights. Compare to baseline — expect Spearman improvement of 0.05-0.15.</Step>
+	<Step>**Tune**: Run Optuna for ~40 trials with fixed learning rate and 5-fold stratified CV. Optimize for mean Spearman.</Step>
+	<Step>**Calibrate**: Fit isotonic regression on the validation set. Optionally fit per-tier calibrators.</Step>
+	<Step>**Intervals**: Train quantile models at alpha 0.1, 0.5, 0.9 for 80% prediction intervals.</Step>
+	<Step>**Evaluate**: Report Spearman, MAPE by tier, and interval coverage on the held-out test set. Set refusal thresholds.</Step>
+</Stepper>
+
+---
+
+## Practice
+
+1. Using your labeled data, train a Ridge baseline and a LightGBM model. Compare Spearman correlation on the test set. How much does the GBM improve?
+
+2. Plot predicted vs actual visits on a log-log scatter. Do you see systematic bias at any traffic tier? If so, apply isotonic calibration and plot again.
+
+3. Train quantile models at 0.1 and 0.9. What fraction of test-set actuals fall within the 80% interval? Is coverage better for mid-size or large sites?
+
+4. Compute MAPE by traffic tier. At which tier does your model break down? Set a refusal threshold based on where MAPE exceeds 100%.
+
+## Quiz
+
+<Quiz questions={[
+	{
+		q: "Why predict log1p(visits) instead of raw visits?",
+		options: [
+			"It makes the numbers smaller and easier to work with",
+			"Traffic follows a power law — log transform compresses the dynamic range and makes multiplicative errors additive",
+			"LightGBM requires log-transformed targets",
+			"It's faster to train on log-scale data",
+		],
+		answer: 1,
+		explain: "Web traffic spans 6+ orders of magnitude and follows a power law. Log transform turns the multiplicative relationship between features and traffic into roughly additive, and makes error proportional rather than absolute."
+	},
+	{
+		q: "Why use stratified splits by traffic tier instead of random splits?",
+		options: [
+			"Random splits are slower",
+			"Stratification ensures each split has proportional representation of small, mid, and large sites — so you can evaluate per-tier",
+			"Tree models require stratified data",
+			"It prevents data leakage",
+		],
+		answer: 1,
+		explain: "With heavy-tailed traffic, a random split might put all 250K+ sites in training and none in validation. Stratification by tier ensures every split has examples from every size class, so you can measure accuracy where it matters."
+	},
+	{
+		q: "Your model has Spearman 0.82 and mid-tier MAPE of 40%. Is it useful?",
+		options: [
+			"No — 40% error is too high",
+			"Yes — rank ordering is strong (0.82) and MAPE matches commercial tools like Ahrefs (~50% median)",
+			"Only if MAPE is under 10%",
+			"Can't tell without more information",
+		],
+		answer: 1,
+		explain: "Spearman 0.82 means you can reliably rank competitors. MAPE of 40% is competitive with published accuracy of Ahrefs (49.5% median) and SimilarWeb (~20-50% depending on tier). These tools are directional compasses — 40% MAPE on mid-tier is solid."
+	},
+	{
+		q: "What does isotonic calibration fix?",
+		options: [
+			"Overfitting in the training set",
+			"Systematic bias — e.g., consistently over-predicting small sites and under-predicting large ones",
+			"Missing feature values",
+			"Multicollinearity between features",
+		],
+		answer: 1,
+		explain: "Isotonic regression fits a monotone correction curve on a validation set. If your raw model predicts 8 (log scale) but actuals average 8.5 at that prediction level, the isotonic curve learns to bump predictions up. It fixes systematic over/under-prediction patterns."
+	},
+	{
+		q: "Your 80% prediction interval for a domain is [5,000, 500,000]. Should you serve this estimate?",
+		options: [
+			"Yes — it's an 80% interval so 80% chance the real value is in there",
+			"No — the interval is 100x wide, indicating too much uncertainty to be useful",
+			"Yes — wide intervals are more conservative and therefore better",
+			"Only if the point estimate is above 5,000",
+		],
+		answer: 1,
+		explain: "A 100x-wide interval (5K to 500K) tells the user nothing actionable. This should trigger the 'too_uncertain' refusal rule. It typically means the domain has too few features available (missing from most sources) for a reliable estimate."
+	},
+]} />
+
+## References
+
+- [Grinsztajn et al. 2022 — Why tree-based models still outperform DL on tabular data](https://arxiv.org/abs/2207.08815)
+- [Xavier 2024 — The Web unpacked: Zipf and power-law analysis](https://arxiv.org/abs/2404.17095)
+- [LightGBM Parameters Tuning](https://lightgbm.readthedocs.io/en/latest/Parameters-Tuning.html)
+- [Optuna — Hyperparameter optimization framework](https://optuna.org/)
+- [MAPIE — Conformal prediction intervals](https://mapie.readthedocs.io/)
+- [Ahrefs — Traffic estimation accuracy](https://ahrefs.com/blog/traffic-estimations-accuracy/)
+- [SparkToro — Which traffic estimate best matches GA](https://sparktoro.com/blog/which-3rd-party-traffic-estimate-best-matches-google-analytics/)

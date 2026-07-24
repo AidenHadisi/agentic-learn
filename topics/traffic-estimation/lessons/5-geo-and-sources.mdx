@@ -1,0 +1,386 @@
+import { Callout, Quiz, Stepper, Step, Reveal, Tabs, Tab, Mermaid, Chart, CodeBlock } from "@learn/components";
+
+# Geo & Traffic Source Estimation
+
+<div className="lesson-meta">Model country-level traffic distributions and channel mix as separate prediction heads.</div>
+
+You can predict total monthly visits. Now you need to break that number down: **which countries** does the traffic come from, and **which channels** (organic, direct, social, etc.) drive it? These are two distinct problems with very different difficulty levels.
+
+## The Difficulty Gap
+
+<Callout variant="key">
+Geo estimation is **tractable** from public signals. Channel mix is **much harder** — it's the weakest link in any panel-free system. Set expectations accordingly.
+</Callout>
+
+| Problem | Best public signals | Realistic accuracy |
+|---------|--------------------|--------------------|
+| **Geo distribution** | Cloudflare DNS locations, CrUX country ranks, ccTLD/language | Top-country accuracy 70-85% |
+| **Channel mix** | DataForSEO ETV (organic only), niche priors | Organic share ±25-50%; other channels are guesswork without a panel |
+
+Both problems share the same mathematical structure: **predict a set of proportions that sum to 1**. But the available signals are much richer for geo.
+
+## Part 1: Geo Distribution
+
+### The signals
+
+<Tabs>
+	<Tab label="Cloudflare DNS Locations (strongest)">
+		The best free geo signal. Cloudflare estimates what percentage of a domain's DNS users come from each country, based on their 1.1.1.1 resolver data.
+
+		```bash
+		curl "https://api.cloudflare.com/client/v4/radar/dns/top/locations?domain=example.com&limit=20" \
+		  -H "Authorization: Bearer $CF_TOKEN"
+
+		# Returns:
+		# [
+		#   {"clientCountryAlpha2": "US", "value": 43.2},
+		#   {"clientCountryAlpha2": "BR", "value": 11.1},
+		#   {"clientCountryAlpha2": "DE", "value": 6.5},
+		#   ...
+		# ]
+		```
+
+		This is nearly a geo distribution already — pad missing countries to 0 and you have a feature vector.
+	</Tab>
+	<Tab label="CrUX Country Ranks">
+		CrUX publishes separate popularity ranks per country in BigQuery. A site ranking in the top 10K in Germany but top 500K in the US is clearly Germany-heavy.
+
+		```sql
+		SELECT country_code,
+		       experimental.popularity.rank AS rank_bucket
+		FROM `chrome-ux-report.experimental.country`
+		WHERE yyyymm = 202606
+		  AND NET.REG_DOMAIN(NET.HOST(origin)) = 'example.com'
+		```
+
+		Features to extract:
+		- Binary presence in each country
+		- `1 / log(rank)` per country (higher = more popular there)
+		- Number of countries where the site appears (internationalization breadth)
+		- Ratio: `country_rank / global_rank` (high = country-skewed)
+	</Tab>
+	<Tab label="Domain & Language Signals">
+		Simple but powerful priors:
+
+		| Signal | Feature |
+		|--------|---------|
+		| ccTLD (`.de`, `.co.uk`, `.com.br`) | Strong home-country indicator |
+		| `.com` / `.io` / `.org` | Generic — no country info |
+		| hreflang tags | Intended target markets |
+		| Content-Language / html lang | Primary language → likely countries |
+		| DataForSEO ETV by country | Organic search demand footprint |
+	</Tab>
+</Tabs>
+
+### Modeling geo as proportions
+
+The target is a vector of country proportions that sums to 1 — for example, `[US: 0.45, UK: 0.12, DE: 0.08, ..., ROW: 0.15]`. This is **compositional data**, and it needs special handling.
+
+**Recommended approach: log-transform + separate regressors + normalize.**
+
+<CodeBlock language="python" title="Geo model with MultiOutputRegressor" code={`import numpy as np
+from sklearn.multioutput import MultiOutputRegressor
+import lightgbm as lgb
+
+# Countries: top 30 + "ROW" = 31 outputs
+COUNTRIES = ["US", "UK", "DE", "FR", "BR", "IN", "JP", ...]  # + "ROW"
+EPS = 1e-4
+
+# Smooth zeros and log-transform
+y_geo = np.clip(y_geo_raw, 0, None) + EPS
+y_geo = y_geo / y_geo.sum(axis=1, keepdims=True)
+y_log = np.log(y_geo)
+
+# Train independent regressors per country
+model = MultiOutputRegressor(
+    lgb.LGBMRegressor(n_estimators=500, learning_rate=0.05,
+                       num_leaves=31, min_child_samples=30, verbose=-1)
+)
+model.fit(X_train_geo, y_log)
+
+# Predict + softmax normalize
+def predict_geo(X):
+    raw = model.predict(X)
+    p = np.exp(raw)
+    return p / p.sum(axis=1, keepdims=True)`} />
+
+Why log-transform + normalize instead of raw proportions?
+- Raw proportions are bounded [0, 1] — regression models don't respect bounds naturally
+- Log-transform maps to unconstrained space; normalizing back enforces sum-to-1
+- This is a simplified version of the "centered log-ratio" (CLR) transform from compositional data analysis
+
+### Geo-specific features
+
+<CodeBlock language="python" title="Building the geo feature vector" code={`def geo_features(domain, cf_locations, crux_countries, tld_info):
+    feats = {}
+
+    # Cloudflare DNS location percentages (top 30 countries + ROW)
+    cf_dict = {loc["country"]: loc["pct"] / 100 for loc in cf_locations}
+    for c in COUNTRIES:
+        feats[f"cf_dns_{c}"] = cf_dict.get(c, 0.0)
+
+    # CrUX country presence and rank
+    for c in COUNTRIES:
+        rank = crux_countries.get(c)
+        feats[f"crux_{c}_in"] = 1 if rank else 0
+        feats[f"crux_{c}_log"] = np.log10(rank) if rank else 8.0
+
+    # ccTLD prior
+    feats["is_cctld"] = int(tld_info["tld"] in CCTLD_SET)
+    feats["cctld_country"] = CCTLD_MAP.get(tld_info["tld"], "none")
+
+    # Internationalization breadth
+    feats["n_crux_countries"] = sum(
+        1 for c in COUNTRIES if crux_countries.get(c)
+    )
+
+    return feats`} />
+
+<Callout variant="tip">
+The Cloudflare DNS location vector is already close to a geo distribution. For a quick v1, you could use it directly as your geo estimate, calibrated against your labeled data. Train the full model when you want to improve accuracy for sites not well-covered by Cloudflare's resolver.
+</Callout>
+
+## Part 2: Traffic Source Estimation
+
+This is the hard part. Without a clickstream panel, you can only directly estimate **one** channel from public data:
+
+### Organic search: the one you can estimate
+
+DataForSEO's ETV is a direct estimate of organic search clicks. Combined with your total visits model, this gives you organic share:
+
+<CodeBlock language="python" title="Organic share estimation" code={`def estimate_organic_share(etv, total_visits_hat):
+    """ETV from DataForSEO / total predicted visits."""
+    if total_visits_hat <= 0:
+        return 0.4  # fall back to average
+    raw = etv / total_visits_hat
+    return np.clip(raw, 0.05, 0.85)  # organic is never 0% or 100%`} />
+
+### Everything else: niche priors
+
+For direct, referral, social, and paid — there are no strong public signals. The best you can do is **learn average channel proportions per niche from your labeled data** and use those as priors:
+
+<CodeBlock language="python" title="Niche-average channel priors" code={`# Fit these from your labeled dataset, not from blog posts
+NICHE_PRIORS = {
+    #              organic  direct  referral  social  paid  other
+    "news":      [0.22,    0.66,   0.05,     0.06,   0.01, 0.00],
+    "blog":      [0.60,    0.20,   0.10,     0.08,   0.01, 0.01],
+    "ecommerce": [0.31,    0.28,   0.02,     0.16,   0.18, 0.05],
+    "saas":      [0.50,    0.25,   0.10,     0.05,   0.08, 0.02],
+    "default":   [0.40,    0.30,   0.10,     0.08,   0.08, 0.04],
+}`} />
+
+**Industry benchmarks** (directional only — fit your own from labeled data):
+
+<Chart
+	type="bar"
+	data={{
+		labels: ["News", "Blog", "E-commerce", "SaaS"],
+		datasets: [
+			{ label: "Organic", data: [22, 60, 31, 50], backgroundColor: "#22C55E" },
+			{ label: "Direct", data: [66, 20, 28, 25], backgroundColor: "#3B82F6" },
+			{ label: "Social", data: [6, 8, 16, 5], backgroundColor: "#A855F7" },
+			{ label: "Paid", data: [1, 1, 18, 8], backgroundColor: "#F59E0B" },
+			{ label: "Referral", data: [5, 10, 2, 10], backgroundColor: "#EF4444" },
+		]
+	}}
+	options={{
+		plugins: { title: { display: true, text: "Typical channel mix by vertical (%)" } },
+		scales: { x: { stacked: true }, y: { stacked: true, max: 100, title: { display: true, text: "%" } } }
+	}}
+/>
+
+### Combining organic estimate with niche priors
+
+The practical v1 approach: estimate organic from ETV, distribute the remaining traffic using niche-average proportions for the non-organic channels.
+
+<CodeBlock language="python" title="Channel mix estimation" code={`CHANNELS = ["organic", "direct", "referral", "social", "paid", "other"]
+
+def estimate_channel_mix(etv, visits_hat, vertical="default"):
+    # Step 1: estimate organic share from ETV
+    organic_share = np.clip(etv / max(visits_hat, 1), 0.05, 0.85)
+
+    # Step 2: get niche prior for non-organic channels
+    prior = np.array(NICHE_PRIORS.get(vertical, NICHE_PRIORS["default"]))
+
+    # Step 3: blend — use ETV-based organic, distribute rest proportionally
+    mix = prior.copy()
+    mix[0] = organic_share
+    remaining = 1.0 - organic_share
+    non_organic_prior = prior[1:]
+    non_organic_prior = non_organic_prior / non_organic_prior.sum()
+    mix[1:] = remaining * non_organic_prior
+
+    return dict(zip(CHANNELS, mix))`} />
+
+<Callout variant="warn">
+This approach is **honest about its limitations**. Organic is estimated from data. Everything else is a niche-average guess. Don't present non-organic channel numbers with false precision — label them as "estimated based on industry averages" or similar.
+</Callout>
+
+### When you have enough labeled data: train a residual model
+
+If your labeled dataset includes channel breakdowns for thousands of sites, you can train a model that improves on niche priors:
+
+<CodeBlock language="python" title="Channel model (v2 — if you have labels)" code={`# Features that help distinguish channel mix
+channel_features = [
+    "dfs_log_etv",           # organic signal
+    "dfs_branded_share",     # branded queries → higher direct
+    "opr_log_ref_domains",   # backlinks → referral potential
+    "ads_has_file",          # monetized → display traffic
+    "ads_unique_ssp",        # ad sophistication
+    "domain_age_log",        # older = more direct/brand
+    "vertical_encoded",      # niche matters most
+    "visits_hat_log",        # size affects mix
+]
+
+# Same compositional approach as geo
+y_chan = np.log(y_channel_proportions + EPS)
+chan_model = MultiOutputRegressor(
+    lgb.LGBMRegressor(n_estimators=300, learning_rate=0.05, verbose=-1)
+)
+chan_model.fit(X_train[channel_features], y_chan)
+
+def predict_channels(X):
+    raw = chan_model.predict(X[channel_features])
+    p = np.exp(raw)
+    return p / p.sum(axis=1, keepdims=True)`} />
+
+## Part 3: Putting It All Together
+
+### Architecture: separate model heads
+
+<Mermaid chart={`flowchart TD
+	A["Feature Store"] --> B["Visits Model<br/>log1p target"]
+	A --> C["Geo Model<br/>softmax over countries"]
+	A --> D["Channel Model<br/>organic ETV + niche priors"]
+	B --> E["visits_hat"]
+	C --> F["geo_proportions"]
+	D --> G["channel_proportions"]
+	E --> H["Full Breakdown"]
+	F --> H
+	G --> H
+`} />
+
+Keep the three models separate. They use different feature subsets, have different accuracy levels, and need to be evaluated independently. Multi-task learning adds complexity without clear benefit at this scale.
+
+### Combining into a full breakdown
+
+<CodeBlock language="python" title="The final output" code={`def full_breakdown(visits_hat, geo_props, channel_props):
+    """
+    visits_hat:    scalar (e.g., 150,000)
+    geo_props:     array of country proportions summing to 1
+    channel_props: array of channel proportions summing to 1
+
+    Returns a table: visits per country per channel.
+    """
+    # v1: assume channel mix is independent of country
+    # (US and DE traffic have the same organic/direct split)
+    table = visits_hat * np.outer(geo_props, channel_props)
+    return table
+
+# Example:
+# visits_hat = 150,000
+# geo = [US: 0.45, UK: 0.12, DE: 0.08, ...]
+# channels = [organic: 0.55, direct: 0.25, referral: 0.10, ...]
+#
+# Output:
+#          organic   direct  referral  ...
+# US       37,125   16,875   6,750
+# UK        9,900    4,500   1,800
+# DE        6,600    3,000   1,200`} />
+
+<Callout variant="info">
+The geo × channel independence assumption (US and DE have the same organic/direct split) is a simplification. In reality, a US news site might have 70% direct traffic from US users but 40% organic from international users. With enough labeled data, train country-specific channel models — but start with the independent assumption for v1.
+</Callout>
+
+### Evaluation metrics
+
+| Problem | Primary metric | What it tells you |
+|---------|---------------|-------------------|
+| **Geo** | Top-1 country accuracy | "Did we get the biggest market right?" |
+| **Geo** | Jensen-Shannon divergence | How different is the predicted distribution from reality? |
+| **Channel** | Organic share MAE | The one channel we can actually estimate |
+| **Channel** | JS divergence on full mix | Overall mix quality |
+
+<CodeBlock language="python" title="Evaluation functions" code={`def js_divergence(p, q, eps=1e-6):
+    """Jensen-Shannon divergence (symmetric, bounded 0-1 for log2)."""
+    p = np.clip(p, eps, 1)
+    q = np.clip(q, eps, 1)
+    m = 0.5 * (p + q)
+    kl_pm = np.sum(p * np.log(p / m))
+    kl_qm = np.sum(q * np.log(q / m))
+    return 0.5 * (kl_pm + kl_qm)
+
+def top_k_accuracy(y_true, y_pred, k=1):
+    """What fraction of predictions get the top-k countries right?"""
+    true_top = np.argsort(-y_true, axis=1)[:, :k]
+    pred_top = np.argsort(-y_pred, axis=1)[:, :k]
+    return np.mean(true_top[:, 0] == pred_top[:, 0])`} />
+
+---
+
+## Practice
+
+1. Pick five domains with known geo splits. Call the Cloudflare Radar DNS locations API for each. How close are the DNS percentages to the real traffic distribution?
+
+2. For those same domains, check CrUX country ranks in BigQuery. Does the set of countries where the site appears in CrUX match the top countries from Cloudflare?
+
+3. Take a domain you know the channel mix for. Compute organic share as `DataForSEO ETV / total visits`. How close is it to the real organic percentage?
+
+4. Look up the niche-average channel mix for your domain's vertical. How different is it from the site's actual mix? Would niche priors have been a reasonable first guess?
+
+## Quiz
+
+<Quiz questions={[
+	{
+		q: "Why is geo estimation more tractable than channel estimation from public data?",
+		options: [
+			"Geo data is more interesting to users",
+			"There are geography-aware public signals (Cloudflare DNS locations, CrUX country ranks, ccTLDs) but no public signals for most traffic channels",
+			"Channel data requires more compute",
+			"Geo distributions are simpler mathematically",
+		],
+		answer: 1,
+		explain: "Cloudflare's 1.1.1.1 resolver gives per-country DNS percentages, CrUX has country-specific rank tables, and ccTLDs directly indicate a home market. For channels, only organic search has a public estimator (SEO ETV). Direct, social, referral, and paid have no strong free signals — you need a clickstream panel to observe referrer headers."
+	},
+	{
+		q: "What does 'compositional data' mean in this context?",
+		options: [
+			"Data about website composition (pages, sections)",
+			"A set of proportions that must sum to 1 — like country shares or channel percentages",
+			"Data composed from multiple sources",
+			"Data about content type (text, images, video)",
+		],
+		answer: 1,
+		explain: "Geo proportions [US: 45%, UK: 12%, DE: 8%, ...] must sum to 100%. Channel proportions [organic: 55%, direct: 25%, ...] must also sum to 100%. This constraint means you can't just train independent regressors and sum the results — you need to normalize or use compositional transforms."
+	},
+	{
+		q: "Your v1 channel model estimates organic from ETV and uses niche priors for everything else. A stakeholder asks 'how much paid search traffic does competitor X get?' What's the honest answer?",
+		options: [
+			"Give the model's paid search estimate as a precise number",
+			"Say the paid search number is based on the industry average for that vertical — it's a prior, not a measurement",
+			"Refuse to answer because the model can't estimate paid traffic",
+			"Look up the competitor on SimilarWeb instead",
+		],
+		answer: 1,
+		explain: "Organic is estimated from actual SEO data. Everything else is a niche average. Being transparent about this is critical — users should know that 'organic: 55%' is a data-driven estimate while 'paid: 8%' is an industry-average guess for that vertical."
+	},
+	{
+		q: "The full breakdown combines visits × geo × channels. What assumption does this make?",
+		options: [
+			"That all traffic sources are equally valuable",
+			"That the channel mix is the same across all countries (geo and channels are independent)",
+			"That geo proportions don't change over time",
+			"That the visits model is perfectly accurate",
+		],
+		answer: 1,
+		explain: "The outer product visits × geo × channels assumes a US user and a German user of the same site have the same organic/direct/social split. In reality, a US news site might get mostly direct traffic from US users but mostly organic from international users. This is a v1 simplification — with enough labels, you can train country-specific channel models."
+	},
+]} />
+
+## References
+
+- [Cloudflare Radar DNS top locations](https://developers.cloudflare.com/radar/investigate/dns/)
+- [CrUX BigQuery — country tables](https://developer.chrome.com/docs/crux/bigquery)
+- [Compositional data analysis — Aitchison geometry](https://en.wikipedia.org/wiki/Compositional_data)
+- [scikit-bio composition module](https://scikit.bio/docs/latest/generated/skbio.stats.composition.html)
+- [SimilarWeb Country Filter FAQs](https://support.similarweb.com/hc/en-us/articles/6315589042077)

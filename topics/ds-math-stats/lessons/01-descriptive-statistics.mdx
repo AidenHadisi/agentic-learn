@@ -1,0 +1,159 @@
+import { Callout, Quiz, Stepper, Reveal, Playground, Tabs, Chart, CodeBlock, Sources } from "@learn/components";
+import { Step } from "../../../lesson-kit/components/Stepper.jsx";
+import { Tab } from "../../../lesson-kit/components/Tabs.jsx";
+
+# Descriptive Statistics
+
+<div className="lesson-meta">Summarize data with the right tools — and connect them to ML</div>
+
+## Why This Matters
+
+Every data science project starts with the same question: *what does this data look like?* Descriptive statistics are your first-pass answer. But they're more than EDA — the choice of summary statistic is deeply connected to the loss functions that drive machine learning models.
+
+## Measures of Center
+
+You know mean, median, and mode. But do you know *which one your model is optimizing*?
+
+<Callout variant="key">
+**MSE minimizes at the mean.** If you train a model with mean squared error, its prediction for a group converges to the group's mean. **MAE minimizes at the median.** Switch to mean absolute error and your model targets the median instead.[¹]
+</Callout>
+
+This isn't trivia — it's a design choice. When your target variable is right-skewed (revenue, latency, house prices), the mean gets pulled toward outliers. A model trained with MSE will overpredict for typical cases while chasing the tail.
+
+### When to use what
+
+| Statistic | Use when | Fragile to |
+|-----------|----------|-----------|
+| Mean | Symmetric data, or you specifically want to account for magnitude | Outliers, skew |
+| Median | Skewed data, ordinal scales, or you want a "typical" value | Nothing — it's robust |
+| Mode | Categorical data, or multimodal distributions | Small samples |
+
+**Real example:** US household income is right-skewed. The mean (~$105k) is pulled up by high earners; the median (~$75k) better represents a "typical" household.[²] If you're building a model to predict "what income should we expect for a new user," your loss function choice determines which of these you're targeting.
+
+## Measures of Spread
+
+### Variance and Standard Deviation
+
+Variance measures the average squared deviation from the mean:
+
+$$\sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2$$
+
+Standard deviation is its square root — back in the original units.
+
+<Callout variant="warn">
+**Sample vs population:** use \(n-1\) (Bessel's correction) for sample variance. With large datasets this barely matters, but it's the default in `numpy`'s `ddof=1` and pandas. Getting this wrong won't ruin your analysis, but know why the distinction exists — it makes the sample variance an unbiased estimator of the population variance.
+</Callout>
+
+### Intuition for SD
+
+One SD from the mean captures "the typical spread." For roughly symmetric data:
+- ~68% within 1 SD (for Normal data exactly)
+- ~95% within 2 SD
+- **Chebyshev's guarantee (any distribution):** at least 75% within 2 SD, at least 89% within 3 SD[³]
+
+### IQR — The Robust Alternative
+
+The interquartile range (Q3 − Q1) measures spread of the middle 50%. It ignores tails entirely, making it immune to outliers.
+
+**DS application:** When monitoring model performance metrics (latency, prediction error), IQR-based outlier detection (values beyond 1.5×IQR from quartiles) is far more stable than mean ± 2σ on skewed distributions.
+
+## Shape: Skewness and Kurtosis
+
+### Skewness
+
+Measures asymmetry. Right-skewed (positive) means a long right tail.
+
+<Chart
+	type="bar"
+	data={{
+		labels: ["0-20k", "20-40k", "40-60k", "60-80k", "80-100k", "100-150k", "150-200k", "200k+"],
+		datasets: [{ label: "Households (millions)", data: [15, 20, 18, 14, 11, 10, 5, 7], backgroundColor: "rgba(59, 130, 246, 0.7)" }],
+	}}
+	options={{
+		plugins: { title: { display: true, text: "US Income Distribution (right-skewed)" } },
+		scales: { y: { title: { display: true, text: "Millions of households" } } },
+	}}
+/>
+
+**Common right-skewed data in DS:** revenue per user, page load time, ad click-through rates, word frequencies, file sizes.
+
+**The fix:** log-transform right-skewed features before feeding to models that assume normality (linear regression residuals, distance-based methods). But always check — the transform should make sense for the domain.
+
+### Kurtosis
+
+Measures **tail heaviness**, not "peakedness" (a widespread misconception[⁴]). High kurtosis means more probability mass in the tails — more extreme outliers than a Normal distribution would predict.
+
+**DS relevance:** Financial returns have high kurtosis (fat tails). If you assume Normal tails when modeling risk, you'll dramatically underestimate the probability of crashes.
+
+## The DS Connection: Feature Engineering
+
+<Stepper>
+	<Step>**Compute descriptives** — mean, SD, skewness for each feature. High skew? Consider log-transform.</Step>
+	<Step>**Check for outliers** — IQR method or domain knowledge. Decide: clip, transform, or use robust methods.</Step>
+	<Step>**Scale features** — Standard scaling (subtract mean, divide by SD) makes gradient descent behave better. But if outliers are present, use RobustScaler (subtract median, divide by IQR).</Step>
+	<Step>**Choose your model's loss** — Right-skewed target? MAE or Huber loss might be more appropriate than MSE.</Step>
+</Stepper>
+
+## Interactive: How Outliers Break the Mean
+
+<Playground
+	controls={[
+		{ id: "outlier", label: "Outlier value", min: 50, max: 10000, step: 50, value: 100 },
+		{ id: "n", label: "Sample size", min: 5, max: 100, step: 5, value: 20 },
+	]}
+	outputs={[
+		{ label: "Mean shift from outlier", terms: { outlier: 0.05, n: -0.5 }, intercept: 2, precision: 1, unit: "" },
+		{ label: "Median shift from outlier", terms: { outlier: 0, n: 0 }, intercept: 0, precision: 1, unit: " (unaffected)" },
+	]}
+/>
+
+Notice: as the outlier grows extreme, the mean keeps moving but the median stays put. This is what "robustness" means quantitatively.
+
+## Practice
+
+Think about each scenario before revealing the answer:
+
+**Scenario 1:** You're reporting "typical session duration" on a website. Most sessions are 1–5 minutes, but some users leave tabs open for hours.
+
+<Reveal prompt="Which summary and why?">
+**Median** (or median + IQR). The long-tail sessions inflate the mean dramatically, misrepresenting the typical user experience. You might also report the 90th percentile to characterize power users.
+</Reveal>
+
+**Scenario 2:** You're computing the "average revenue per user" to estimate total revenue if you acquire 10,000 new users.
+
+<Reveal prompt="Which summary and why?">
+**Mean** — and here the mean is exactly right! Total revenue = mean × count. The median would underestimate total revenue for right-skewed distributions. This is why mean matters for business totals even when median is better for "typical."
+</Reveal>
+
+**Scenario 3:** Your model's residuals have a standard deviation of 15 but a kurtosis of 8 (much higher than Normal's 3). What should concern you?
+
+<Reveal prompt="What's the concern?">
+High kurtosis means your residuals have fatter tails than Normal. The "2σ captures 95%" rule understates how often your model makes large errors. Your confidence intervals are too narrow. Consider: robust regression, Huber loss, or acknowledging wider prediction intervals.
+</Reveal>
+
+## Quiz
+
+<Quiz questions={[
+	{ q: "A model trained with MSE loss will predict values that converge to the _____ of the training targets.", options: ["Median", "Mean", "Mode", "Geometric mean"], answer: 1, explain: "MSE's gradient points toward the arithmetic mean. The mean minimizes the sum of squared deviations — that's literally what MSE does." },
+	{ q: "A distribution has skewness = 2.1. Which is likely true?", options: ["Mean < Median", "Mean ≈ Median", "Mean > Median", "Impossible to tell"], answer: 2, explain: "Positive skewness means a right tail pulling the mean above the median. The higher the skewness, the larger the gap." },
+	{ q: "You have 1000 data points with SD = 10. You add one point at +500. What happens?", options: ["Mean barely moves, SD barely moves", "Mean barely moves, SD jumps significantly", "Both jump significantly", "Mean jumps, SD barely moves"], answer: 1, explain: "With n=1001, the mean shifts by only ~0.5 (500/1001). But SD is based on squared deviations — that one point at 500 contributes (500-mean)² ≈ 250,000 to the sum, significantly inflating variance. Actually both move, but SD is disproportionately affected." },
+	{ q: "When should you use IQR instead of standard deviation to measure spread?", options: ["Always — IQR is always better", "When data is heavily skewed or has outliers", "Only for categorical data", "When sample size is small"], answer: 1, explain: "IQR is robust to outliers and skew because it only looks at the middle 50%. SD uses all data points and squares deviations, making it sensitive to extremes. Use IQR when outliers or skew would distort SD." },
+]} />
+
+## Key Takeaways
+
+<Callout variant="key">
+1. **Mean vs median is a loss function choice** — MSE → mean, MAE → median
+2. **SD is fragile** — one extreme outlier can dominate it; use IQR for robust spread
+3. **Skewness tells you whether to transform** — right-skewed features often benefit from log-transform
+4. **Kurtosis is about tails, not peaks** — high kurtosis means your Normal-based confidence intervals are too narrow
+</Callout>
+
+## Sources
+
+<Sources list={[
+	{ id: 1, author: "Hastie, Tibshirani & Friedman", year: 2009, title: "The Elements of Statistical Learning, Ch. 2", url: "https://hastie.su.domains/ElemStatLearn/" },
+	{ id: 2, author: "US Census Bureau", year: 2023, title: "Income in the United States: 2022", url: "https://www.census.gov/library/publications/2023/demo/p60-279.html" },
+	{ id: 3, author: "Chebyshev, P.L.", year: 1867, title: "Des valeurs moyennes (On Mean Values)", url: "https://en.wikipedia.org/wiki/Chebyshev%27s_inequality" },
+	{ id: 4, author: "Westfall, P.H.", year: 2014, title: "Kurtosis as Peakedness, 1905–2014. R.I.P.", url: "https://doi.org/10.1080/00031305.2014.917055" },
+]} />

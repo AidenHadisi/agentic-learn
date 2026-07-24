@@ -1,0 +1,435 @@
+import { Callout, Quiz, Stepper, Step, Tabs, Tab, Mermaid, CodeBlock } from "@learn/components";
+
+# System Architecture & API
+
+<div className="lesson-meta">Design the end-to-end pipeline from data collection to internal API.</div>
+
+You have models that estimate visits, geo, and channel mix. Now you need to turn them into a system that a team can actually query. The guiding principle: **batch-score everything into Postgres, serve lookups from a thin API**. Traffic estimates are monthly products — you don't need real-time inference.
+
+## The Full Picture
+
+<Mermaid chart={`flowchart LR
+	subgraph Collect["Collection Jobs"]
+		T["Tranco"]
+		U["Umbrella"]
+		C["CrUX"]
+		R["CF Radar"]
+		D["DataForSEO"]
+		A["ads.txt crawl"]
+	end
+	Collect --> Raw["raw_* tables"]
+	Raw --> Feat["Feature join job"]
+	Feat --> FS["features_ready"]
+	FS --> Score["Batch score<br/>LightGBM"]
+	Score --> Est["domain_estimates"]
+	Est --> API["FastAPI"]
+	API --> Users["Internal tools"]
+`} />
+
+| Layer | What it does | How often |
+|-------|-------------|-----------|
+| **Collection** | Fetches raw data from each source | Daily (ranks), weekly (SEO, ads.txt), monthly (CrUX) |
+| **Feature join** | Joins raw sources on eTLD+1 into a wide feature table | Weekly |
+| **Batch scoring** | Runs visits + geo + channel models, writes estimates | Weekly full, daily for hot domains |
+| **Serving** | Postgres + FastAPI — API reads precomputed estimates | Always on |
+
+## Why Batch, Not On-Demand
+
+<Tabs>
+	<Tab label="Batch (precompute)">
+		Score all tracked domains once per week. API lookups are simple DB reads — 1-20ms.
+
+		- Low latency, low cost
+		- API works even if a scoring job is late
+		- Simple to debug: estimates are just rows in a table
+		- Matches industry practice — SimilarWeb and Semrush both deliver weekly/monthly estimates
+	</Tab>
+	<Tab label="On-demand (score at request)">
+		Fetch features and run the model when a user queries a domain.
+
+		- 50-500ms+ per request (feature fetch + model inference)
+		- Fails if DataForSEO or Cloudflare is down
+		- Much more complex to operate
+		- Only useful for "never seen" domains as a fallback
+	</Tab>
+</Tabs>
+
+<Callout variant="key">
+For an internal tool serving 10-100 users, Postgres + FastAPI is the right stack. The complexity should go into **data quality and model accuracy**, not infrastructure. Skip Kubernetes, Feast, and microservices.
+</Callout>
+
+## Data Collection Layer
+
+Each source is an independent job with its own schedule. Never gate scoring on "all sources succeeded" — score with whatever features are available (your `_in` flags and sentinels handle missing data).
+
+### Collection schedule
+
+| Source | Frequency | Why |
+|--------|-----------|-----|
+| Tranco CSV | Daily | Free, updates daily, high churn |
+| Umbrella CSV | Daily | Same |
+| Cloudflare Radar | Weekly | Bucket datasets are weekly |
+| DataForSEO bulk | Weekly (top 50K) / monthly (rest) | Cost control — ~$0.001/domain |
+| ads.txt crawl | Weekly | Files change slowly |
+| CrUX BigQuery | Monthly (2nd Tuesday) | Official release cadence |
+| Open PageRank | Monthly | Common Crawl release cadence |
+| Domain age (RDAP) | Once + yearly refresh | Registration date is immutable |
+
+### Domain universe management
+
+Where does the list of domains to track come from?
+
+<Stepper>
+	<Step>**Seed** with Tranco top 100K (or 1M) — the starting universe.</Step>
+	<Step>**Add internal domains** — your publishers, competitors, prospects. These are must-cover.</Step>
+	<Step>**Demand-driven expansion** — when someone queries a domain not in the universe, queue it for collection. Return `status: pending` until features are ready.</Step>
+	<Step>**Prune cold domains** — domains never queried in 90 days and outside top-N get dropped from paid fetches (keep the last estimate for history).</Step>
+</Stepper>
+
+<CodeBlock language="sql" title="Domain universe table" code={`CREATE TABLE domain_universe (
+    domain          TEXT PRIMARY KEY,
+    sources         TEXT[],          -- {'tranco', 'internal', 'api_request'}
+    tier            TEXT NOT NULL,   -- 'hot' | 'warm' | 'cold'
+    active          BOOLEAN DEFAULT true,
+    addedAt         TIMESTAMPTZ DEFAULT now(),
+    lastQueriedAt   TIMESTAMPTZ
+);
+
+-- Tier drives cost:
+-- hot  (top 50K + recently queried): weekly DataForSEO + daily score
+-- warm (rest of tracked):            monthly DataForSEO + weekly score
+-- cold (unqueried 90d, outside top): ranks only, score monthly`} />
+
+### Raw data storage
+
+Each source writes to its own table. Append-only, partitioned by fetch date:
+
+<CodeBlock language="sql" title="Raw data tables" code={`CREATE TABLE raw_tranco (
+    asOfDate    DATE NOT NULL,
+    rank        INT NOT NULL,
+    host        TEXT NOT NULL,
+    domain      TEXT NOT NULL,    -- eTLD+1
+    PRIMARY KEY (asOfDate, host)
+);
+
+CREATE TABLE raw_crux (
+    yyyymm      INT NOT NULL,
+    origin      TEXT NOT NULL,
+    domain      TEXT NOT NULL,
+    rankBucket  INT,
+    PRIMARY KEY (yyyymm, origin)
+);
+
+CREATE TABLE raw_ads_txt (
+    domain      TEXT NOT NULL,
+    fetchedAt   DATE NOT NULL,
+    statusCode  INT,
+    body        TEXT,
+    PRIMARY KEY (domain, fetchedAt)
+);
+
+-- Same pattern for raw_umbrella, raw_radar, raw_dataforseo, etc.`} />
+
+## Feature Store: Just a SQL Table
+
+For ~35 features and batch serving, a materialized table **is** your feature store. No Feast, no Redis, no feature platform needed.
+
+<CodeBlock language="sql" title="The feature table" code={`CREATE TABLE features_ready (
+    domain              TEXT NOT NULL,
+    asOfDate            DATE NOT NULL,
+    -- popularity
+    cruxIn              BOOLEAN,
+    cruxLogRank         FLOAT,
+    trancoIn            BOOLEAN,
+    trancoLogRank       FLOAT,
+    trancoDelta30d      FLOAT,
+    cfIn                BOOLEAN,
+    cfLogBucket         FLOAT,
+    umbrellaIn          BOOLEAN,
+    umbrellaLogRank     FLOAT,
+    -- seo
+    dfsLogEtv           FLOAT,
+    dfsKeywordCount     INT,
+    dfsTop3Share        FLOAT,
+    -- ads
+    adsHasFile          BOOLEAN,
+    adsDirectCount      INT,
+    adsUniqueSsp        INT,
+    -- authority
+    oprScore            FLOAT,
+    oprLogRefDomains    FLOAT,
+    -- age
+    domainAgeLog        FLOAT,
+    domainIsNew         BOOLEAN,
+    -- meta
+    featureCompleteness FLOAT,
+    materializedAt      TIMESTAMPTZ,
+    PRIMARY KEY (domain, asOfDate)
+);`} />
+
+<Callout variant="warn">
+Share one `feature_encode.py` module between training and scoring. If your training pipeline encodes CrUX absent as `log10(1e8) = 8.0` but your scoring pipeline uses `0`, the model will produce garbage. Train/serve skew is the most common ML deployment bug.
+</Callout>
+
+## Batch Scoring Pipeline
+
+<Mermaid chart={`flowchart TD
+	A["Load features_ready"] --> B["Load model + calibrator"]
+	B --> C["Predict visits / geo / channels"]
+	C --> D["Apply isotonic calibration"]
+	D --> E["Write domain_estimates_staging"]
+	E --> F{"Validation checks"}
+	F -->|"pass"| G["Swap to domain_estimates"]
+	F -->|"fail"| H["Alert + keep previous"]
+`} />
+
+### Validation gates before publishing
+
+Never publish scores blindly. Check:
+- Row count is at least 95% of the prior week
+- Median predicted visits is within 2x of the prior week
+- No NaN or Inf values
+- Coverage flags (`cruxIn` percentage) haven't dropped unexpectedly
+
+<CodeBlock language="python" title="Scoring job sketch" code={`import joblib
+import pandas as pd
+import numpy as np
+
+# Load
+features = pd.read_sql("SELECT * FROM features_ready WHERE asOfDate = %s", conn, params=[as_of])
+model = joblib.load("models/visits_v3/model.joblib")
+calibrator = joblib.load("models/visits_v3/calibrator.joblib")
+geo_model = joblib.load("models/geo_v2/model.joblib")
+channel_model = joblib.load("models/channel_v2/model.joblib")
+feature_names = json.load(open("models/visits_v3/feature_names.json"))
+
+# Score
+X = features[feature_names].values
+y_raw = model.predict(X)
+y_cal = calibrator.predict(y_raw)
+visits = np.expm1(y_cal).clip(0)
+
+geo = predict_geo(geo_model, features)
+channels = predict_channels(channel_model, features, etv=features["dfsLogEtv"])
+
+# Assemble + write
+estimates = pd.DataFrame({
+    "domain": features["domain"],
+    "asOfDate": as_of,
+    "modelVersion": "visits_v3",
+    "monthlyVisits": visits.astype(int),
+    "ciLow": np.expm1(q10.predict(X)).clip(0).astype(int),
+    "ciHigh": np.expm1(q90.predict(X)).clip(0).astype(int),
+    # ... geo and channel columns ...
+})
+estimates.to_sql("domain_estimates_staging", conn, if_exists="replace")
+
+# Validate + swap
+validate_and_publish(conn)`} />
+
+## API Design
+
+### Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/v1/domains/{domain}` | Single domain lookup |
+| `POST` | `/v1/domains/lookup` | Bulk sync (up to 100) |
+| `GET` | `/v1/domains/{domain}/history` | Historical monthly estimates |
+| `POST` | `/v1/feedback` | Report a bad estimate |
+| `GET` | `/v1/health` | Pipeline + API status |
+
+### Single domain response
+
+<CodeBlock language="json" title="GET /v1/domains/nytimes.com" code={`{
+    "domain": "nytimes.com",
+    "asOfDate": "2026-07-01",
+    "modelVersion": "visits_v3",
+    "visits": {
+        "monthlyVisits": 412000000,
+        "ciLow": 310000000,
+        "ciHigh": 540000000,
+        "confidence": 0.78
+    },
+    "geo": [
+        {"countryCode": "US", "share": 0.62},
+        {"countryCode": "GB", "share": 0.08},
+        {"countryCode": "CA", "share": 0.05}
+    ],
+    "channels": {
+        "organic": 0.41,
+        "direct": 0.33,
+        "referral": 0.12,
+        "social": 0.08,
+        "paid": 0.06
+    },
+    "coverage": {
+        "inCrux": true,
+        "inTranco": true,
+        "featureCompleteness": 0.91
+    },
+    "status": "ok"
+}`} />
+
+For unknown domains, return `status: pending` and queue for collection:
+
+<CodeBlock language="json" title="Unknown domain response" code={`{
+    "domain": "brand-new-site.xyz",
+    "status": "pending",
+    "message": "Queued for feature collection; estimate available within 24h"
+}`} />
+
+### Bulk lookup
+
+<CodeBlock language="json" title="POST /v1/domains/lookup" code={`{
+    "domains": ["nytimes.com", "wsj.com", "unknown.xyz"],
+    "includeGeo": true,
+    "includeChannels": true
+}
+
+// Response:
+{
+    "asOfDate": "2026-07-01",
+    "modelVersion": "visits_v3",
+    "results": [
+        {"domain": "nytimes.com", "status": "ok", "visits": {"monthlyVisits": 412000000}},
+        {"domain": "wsj.com", "status": "ok", "visits": {"monthlyVisits": 89000000}},
+        {"domain": "unknown.xyz", "status": "notFound"}
+    ],
+    "summary": {"requested": 3, "ok": 2, "notFound": 1}
+}`} />
+
+## Monitoring & Iteration
+
+<Mermaid chart={`flowchart LR
+	U["User sees bad estimate"] --> F["POST /v1/feedback"]
+	F --> T["Feedback tickets table"]
+	T --> R["Weekly review"]
+	R --> L["Add to labeled set"]
+	L --> Train["Monthly retrain"]
+`} />
+
+### What to monitor
+
+| Signal | Alert when |
+|--------|-----------|
+| CrUX coverage | `% domains with cruxIn` drops more than 10% MoM |
+| Tranco/Umbrella fetch | Job status != success |
+| DataForSEO errors | 4xx/5xx rate above 5% or spend spike |
+| Estimate row count | Below 95% of prior week after publish |
+| Model MAPE (on labeled holdout) | Worsens more than 15% relative |
+| API health | p95 latency above 200ms or 5xx rate above 1% |
+| DataForSEO spend | Approaches 80% of monthly budget |
+
+### Model versioning
+
+Keep it simple: score with the new model version into a staging table, compare metrics against production on the labeled holdout, then swap.
+
+<CodeBlock language="sql" title="Model registry" code={`CREATE TABLE model_registry (
+    name        TEXT NOT NULL,     -- 'visits', 'geo', 'channel'
+    version     TEXT NOT NULL,     -- 'visits_v4'
+    stage       TEXT NOT NULL,     -- 'staging' | 'prod' | 'archived'
+    trainedAt   TIMESTAMPTZ,
+    mapeByTier  JSONB,            -- {"<5K": 0.85, "5-25K": 0.42, ...}
+    spearman    FLOAT,
+    PRIMARY KEY (name, version)
+);`} />
+
+## Deployment: Start Simple
+
+<Callout variant="tip">
+For 10-100 internal users querying precomputed estimates from Postgres, a single server running FastAPI is more than enough. Add complexity only when you feel pain — not before.
+</Callout>
+
+<Tabs>
+	<Tab label="Phase 1 (ship it)">
+		- **Cron** or systemd timers for collection + scoring jobs
+		- **Python scripts** for everything (collection, features, scoring)
+		- **FastAPI** with uvicorn for the API
+		- **Managed Postgres** (RDS, Cloud SQL, or even local)
+		- **Models on disk** (joblib files)
+		- **Slack webhook** for alerts
+
+		This handles up to ~2M tracked domains and 100 concurrent API users.
+	</Tab>
+	<Tab label="Phase 2 (only when needed)">
+		Upgrade when you feel specific pain:
+
+		| Pain | Add |
+		|------|-----|
+		| Jobs failing silently, hard to debug | Prefect or Dagster |
+		| CrUX/raw history scans slow in Postgres | BigQuery for offline analytics |
+		| Need multiple API instances | Redis shared cache + load balancer |
+		| Scoring job too slow (millions of domains) | Cloud Run Jobs for parallel scoring |
+	</Tab>
+</Tabs>
+
+---
+
+## Practice
+
+1. Design the `domain_estimates` table schema. What columns do you need to store visits, geo proportions for 30 countries, channel proportions for 6 channels, confidence intervals, and model metadata?
+
+2. Write a FastAPI endpoint for `GET /v1/domains/{domain}` that reads from Postgres and returns the response format shown above. Handle the case where the domain isn't found.
+
+3. Write a validation function that compares `domain_estimates_staging` against the current `domain_estimates` table and blocks publish if row count or median visits deviate too much.
+
+4. Design the cron schedule for your collection jobs. Map each source to a specific time and day, accounting for dependencies (feature join must wait for daily fetches to complete).
+
+## Quiz
+
+<Quiz questions={[
+	{
+		q: "Why batch-score all domains weekly instead of scoring on each API request?",
+		options: [
+			"Batch scoring is more accurate",
+			"API lookups become simple DB reads (1-20ms) instead of expensive feature-fetch + model-inference (50-500ms+)",
+			"LightGBM can only run in batch mode",
+			"It's required by the data sources' terms of service",
+		],
+		answer: 1,
+		explain: "Precomputing estimates and storing them in Postgres means the API just does a database lookup — fast, simple, and resilient to upstream failures. On-demand scoring would require fetching features from multiple APIs and running the model on every request, adding latency and failure modes."
+	},
+	{
+		q: "A domain is queried via the API but has never been tracked. What should happen?",
+		options: [
+			"Return an error and refuse to estimate",
+			"Return a random estimate based on the domain name",
+			"Return status 'pending', queue the domain for feature collection, and estimate within 24h",
+			"Score it immediately using only the features you can fetch in real time",
+		],
+		answer: 2,
+		explain: "Queue the domain for collection (add to the universe as 'hot'), fetch features in the next collection cycle, score in the next scoring run, and return the estimate on the next query. This avoids the complexity of on-demand scoring while ensuring new domains eventually get covered."
+	},
+	{
+		q: "Your weekly scoring job produces estimates where the median visits is 5x higher than last week. What should happen?",
+		options: [
+			"Publish anyway — the model is always right",
+			"The validation gate should block publish, alert the team, and keep the previous estimates live",
+			"Delete last week's estimates and use the new ones",
+			"Average the old and new estimates",
+		],
+		answer: 1,
+		explain: "A 5x jump in median visits almost certainly indicates a bug — a broken feature join, a model loading the wrong version, or corrupted raw data. The validation gate catches this, blocks publish, and alerts the team to investigate. Users continue seeing last week's estimates (which are probably fine)."
+	},
+	{
+		q: "When should you upgrade from 'cron + Python scripts' to Prefect or Dagster?",
+		options: [
+			"Immediately — production systems need proper orchestration",
+			"When jobs start failing silently, dependencies become hard to track, or you need backfill capabilities",
+			"Never — cron is always sufficient",
+			"When you have more than 5 data sources",
+		],
+		answer: 1,
+		explain: "Cron works fine for a handful of independent jobs. Upgrade when you feel real pain: jobs failing without alerts, needing to rerun a chain of dependent jobs, or wanting a UI to see pipeline status. The number of data sources alone isn't a trigger — complexity of dependencies is."
+	},
+]} />
+
+## References
+
+- [SimilarWeb REST API vs Batch API](https://developer.similarweb.com/)
+- [Semrush Traffic Analytics API](https://developer.semrush.com/api/v3/ta/)
+- [FastAPI documentation](https://fastapi.tiangolo.com/)
+- [LightGBM model serialization](https://lightgbm.readthedocs.io/en/latest/Python-API.html)
+- [Evidently — ML monitoring](https://www.evidentlyai.com/)
+- [Prefect — workflow orchestration](https://www.prefect.io/)
