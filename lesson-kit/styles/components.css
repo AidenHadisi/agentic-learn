@@ -209,26 +209,6 @@
 }
 .playground__output-value { font-family: var(--font-mono); font-size: 1.25rem; font-weight: 600; }
 
-/* --- Blank --- */
-.blank { display: inline-flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
-.blank__input {
-	font-family: var(--font-mono);
-	font-size: 0.9em;
-	padding: 0.1em 0.4em;
-	border: 1px solid var(--border-strong);
-	border-bottom-width: 2px;
-	border-radius: 4px;
-	background: var(--bg);
-	color: var(--text);
-}
-.blank__input--correct { border-color: var(--ok); background: var(--ok-bg); }
-.blank__input--incorrect { border-color: var(--err); background: var(--err-bg); }
-.blank__input:disabled { opacity: 1; }
-.blank__mark { font-size: 0.85rem; color: var(--text-muted); }
-.blank__mark--correct { color: var(--ok); font-weight: 700; }
-.blank__note { font-size: 0.85rem; }
-.blank__note--incorrect { color: var(--err); }
-
 /* --- Flashcards --- */
 .flashcards {
 	border: 1px solid var(--border);
@@ -324,7 +304,9 @@
 .mermaid-wrapper svg { max-width: 100%; height: auto; }
 
 /* --- Chart --- */
-.chart-wrapper { margin: var(--space-4) 0; max-width: 100%; }
+/* A definite height is required: Chart.js can only fill its container, and a
+   container sized by the canvas is circular. Override per chart via `height`. */
+.chart-wrapper { position: relative; height: 22rem; margin: var(--space-4) 0; max-width: 100%; }
 
 /* --- CodeBlock --- */
 .codeblock { margin: var(--space-4) 0; }

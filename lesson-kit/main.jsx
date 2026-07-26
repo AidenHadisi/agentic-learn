@@ -4,7 +4,7 @@ import { MDXProvider } from "@mdx-js/react";
 import Lesson from "@learn/lesson";
 import { components } from "@learn/components";
 import { LessonShell } from "./LessonShell.jsx";
-import "katex/dist/katex.min.css";
+import "virtual:katex-styles";
 import "./styles/fonts.css";
 import "./styles/tokens.css";
 import "./styles/components.css";

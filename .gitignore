@@ -3,6 +3,8 @@ scratch/
 node_modules/
 .cache/
 /index.html
+# Built lessons are derived from the .mdx sources; rebuild with `npm run lessons:build`.
+topics/*/lessons/*.html
 lesson-kit/dist/
 lesson-kit/gallery.html
 .cursor/lesson-kit/dist/

@@ -10,6 +10,7 @@
 	"scripts": {
 		"lesson:new": "node scripts/lesson.mjs new",
 		"lesson:build": "node scripts/lesson.mjs build",
+		"lessons:build": "node scripts/lesson.mjs build-all && node scripts/index.mjs",
 		"gallery:build": "node scripts/lesson.mjs build lesson-kit/gallery.mdx",
 		"index:build": "node scripts/index.mjs",
 		"validate:state": "node scripts/validate-state.mjs",
@@ -19,6 +20,7 @@
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
+		"@mdx-js/mdx": "^3.1.1",
 		"@mdx-js/react": "^3.1.0",
 		"@mdx-js/rollup": "^3.1.0",
 		"chart.js": "^4.5.1",
@@ -28,7 +30,8 @@
 		"react-dom": "^19.1.0",
 		"rehype-katex": "^7.0.1",
 		"remark-gfm": "^4.0.1",
-		"remark-math": "^6.0.0"
+		"remark-math": "^6.0.0",
+		"unist-util-visit": "^5.1.0"
 	},
 	"devDependencies": {
 		"@vitejs/plugin-react": "^4.5.2",

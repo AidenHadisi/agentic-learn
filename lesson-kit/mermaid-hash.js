@@ -4,12 +4,8 @@
 // MDX re-indents multi-line template literals in JSX attributes, so the string the
 // browser receives is not byte-identical to the MDX source the build script reads.
 // Indentation is cosmetic in mermaid, so the hash ignores it.
+import { fnv1a } from "./hash.js";
+
 export function chartHash(chart) {
-	const normalized = chart.trim().split("\n").map((line) => line.trim()).join("\n");
-	let h = 0x811c9dc5;
-	for (const ch of normalized) {
-		h ^= ch.codePointAt(0);
-		h = Math.imul(h, 0x01000193);
-	}
-	return (h >>> 0).toString(16).padStart(8, "0");
+	return fnv1a(chart.trim().split("\n").map((line) => line.trim()).join("\n"));
 }

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
+import { contentKey, usePersistentState } from "../persist.js";
 
-function shuffled(cards) {
-	const next = [...cards];
+function shuffled(items) {
+	const next = [...items];
 	for (let i = next.length - 1; i > 0; i--) {
 		const j = Math.floor(Math.random() * (i + 1));
 		[next[i], next[j]] = [next[j], next[i]];
@@ -10,41 +11,44 @@ function shuffled(cards) {
 }
 
 export function Flashcards({ cards }) {
-	const [deck, setDeck] = useState(cards);
-	const [index, setIndex] = useState(0);
+	const key = contentKey("flashcards", cards.map((card) => card.front));
+	// Card faces may be JSX, which will not survive JSON, so the saved deck is
+	// positions into `cards` rather than the cards themselves.
+	const [state, setState, reset] = usePersistentState(key, () => ({
+		deck: cards.map((_, i) => i),
+		position: 0,
+		again: [],
+	}));
 	const [flipped, setFlipped] = useState(false);
-	const [again, setAgain] = useState([]);
-	const [finished, setFinished] = useState(false);
+
+	const { deck, position, again } = state;
 
 	const restart = () => {
-		setDeck(cards);
-		setIndex(0);
 		setFlipped(false);
-		setAgain([]);
-		setFinished(false);
+		reset();
 	};
 
 	const advance = (keepForReview) => {
-		const pending = keepForReview ? [...again, deck[index]] : again;
+		const pending = keepForReview ? [...again, deck[position]] : again;
 		setFlipped(false);
-		if (index + 1 < deck.length) {
-			setAgain(pending);
-			setIndex(index + 1);
+		if (position + 1 < deck.length) {
+			setState({ deck, position: position + 1, again: pending });
 		} else if (pending.length > 0) {
-			setDeck(pending);
-			setAgain([]);
-			setIndex(0);
+			setState({ deck: pending, position: 0, again: [] });
 		} else {
-			setFinished(true);
+			setState({ deck, position: deck.length, again: [] });
 		}
 	};
 
 	const go = (delta) => {
 		setFlipped(false);
-		setIndex((i) => Math.min(deck.length - 1, Math.max(0, i + delta)));
+		setState((prev) => ({
+			...prev,
+			position: Math.min(prev.deck.length - 1, Math.max(0, prev.position + delta)),
+		}));
 	};
 
-	if (finished) {
+	if (position >= deck.length) {
 		return (
 			<div className="flashcards">
 				<p className="flashcards__done">Deck finished — every card marked "got it".</p>
@@ -53,12 +57,12 @@ export function Flashcards({ cards }) {
 		);
 	}
 
-	const card = deck[index];
+	const card = cards[deck[position]];
 
 	return (
 		<div className="flashcards">
 			<p className="flashcards__progress">
-				Card {index + 1} of {deck.length}
+				Card {position + 1} of {deck.length}
 				{again.length > 0 && ` · ${again.length} queued for review`}
 			</p>
 			<button className="flashcards__card" onClick={() => setFlipped((f) => !f)}>
@@ -73,12 +77,12 @@ export function Flashcards({ cards }) {
 				</div>
 			)}
 			<div className="flashcards__controls">
-				<button className="btn btn--sm" disabled={index === 0} onClick={() => go(-1)}>
+				<button className="btn btn--sm" disabled={position === 0} onClick={() => go(-1)}>
 					Previous
 				</button>
 				<button
 					className="btn btn--sm"
-					disabled={index === deck.length - 1}
+					disabled={position === deck.length - 1}
 					onClick={() => go(1)}
 				>
 					Next
@@ -86,9 +90,8 @@ export function Flashcards({ cards }) {
 				<button
 					className="btn btn--sm btn--ghost"
 					onClick={() => {
-						setDeck(shuffled(deck));
-						setIndex(0);
 						setFlipped(false);
+						setState({ deck: shuffled(deck), position: 0, again: [] });
 					}}
 				>
 					Shuffle

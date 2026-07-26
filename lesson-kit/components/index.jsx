@@ -1,7 +1,6 @@
 export { Meta } from "./Meta.jsx";
 export { Callout } from "./Callout.jsx";
 export { Quiz } from "./Quiz.jsx";
-export { Blank } from "./Blank.jsx";
 export { Flashcards } from "./Flashcards.jsx";
 export { Stepper, Step } from "./Stepper.jsx";
 export { Reveal } from "./Reveal.jsx";
