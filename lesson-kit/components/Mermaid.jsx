@@ -1,42 +1,32 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
+import svgs from "virtual:mermaid-svgs";
+import { chartHash } from "../mermaid-hash.js";
 
-let mermaidReady = null;
-
-function getMermaid() {
-	if (!mermaidReady) {
-		mermaidReady = import("mermaid").then((m) => {
-			m.default.initialize({
-				startOnLoad: false,
-				theme: window.matchMedia("(prefers-color-scheme: dark)").matches
-					? "dark"
-					: "default",
-			});
-			return m.default;
-		});
-	}
-	return mermaidReady;
-}
+const darkQuery = "(prefers-color-scheme: dark)";
 
 export function Mermaid({ chart }) {
-	const ref = useRef(null);
-	const [svg, setSvg] = useState("");
+	const [dark, setDark] = useState(() => window.matchMedia(darkQuery).matches);
 
 	useEffect(() => {
-		let cancelled = false;
-		const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
-		getMermaid().then(async (mermaid) => {
-			if (cancelled) return;
-			const { svg: rendered } = await mermaid.render(id, chart.trim());
-			if (!cancelled) setSvg(rendered);
-		});
-		return () => { cancelled = true; };
-	}, [chart]);
+		const mq = window.matchMedia(darkQuery);
+		const onChange = (e) => setDark(e.matches);
+		mq.addEventListener("change", onChange);
+		return () => mq.removeEventListener("change", onChange);
+	}, []);
+
+	const rendered = svgs[chartHash(chart)];
+	if (!rendered) {
+		return (
+			<pre className="mermaid-wrapper">
+				{`Mermaid diagram was not pre-rendered — rebuild this lesson.\n\n${chart.trim()}`}
+			</pre>
+		);
+	}
 
 	return (
 		<div
 			className="mermaid-wrapper"
-			ref={ref}
-			dangerouslySetInnerHTML={{ __html: svg }}
+			dangerouslySetInnerHTML={{ __html: dark ? rendered.dark : rendered.light }}
 		/>
 	);
 }

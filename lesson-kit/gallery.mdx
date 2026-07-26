@@ -1,10 +1,16 @@
-import { Callout, Quiz, Stepper, Reveal, Scenario, Playground, Tabs, Mermaid, Chart, CodeBlock, Sources } from "@learn/components";
+import { Meta, Callout, Quiz, Blank, Flashcards, Stepper, Reveal, Scenario, Playground, Tabs, Mermaid, Chart, CodeBlock, Figure, Sources, Ref } from "@learn/components";
 import { Step } from "./components/Stepper.jsx";
 import { Tab } from "./components/Tabs.jsx";
 
 # Component Gallery
 
-<div className="lesson-meta">Reference for all available lesson components</div>
+<Meta>Reference for all available lesson components</Meta>
+
+## Meta
+
+`Meta` renders the line directly under the lesson title — duration and a one-line subtitle.
+
+<Meta>15 min · one-line subtitle</Meta>
 
 ## Callout
 
@@ -21,6 +27,20 @@ import { Tab } from "./components/Tabs.jsx";
 <Quiz questions={[
 	{ q: "What color is the sky on a clear day?", options: ["Red", "Blue", "Green"], answer: 1, explain: "Rayleigh scattering causes shorter blue wavelengths to scatter more." },
 	{ q: "Which planet is closest to the sun?", options: ["Venus", "Mercury", "Mars"], answer: 1, explain: "Mercury orbits at about 58 million km from the sun." },
+]} />
+
+## Blank
+
+The standard deviation is the square root of the <Blank answer={["variance", "var"]} hint="It has squared units." /> — type an answer and press Enter.
+
+One quarter written as a decimal is <Blank answer={0.25} tolerance={0.01} />.
+
+## Flashcards
+
+<Flashcards cards={[
+	{ front: "What does IID stand for?", back: "Independent and identically distributed." },
+	{ front: <>What does <code>P(A | B)</code> mean?</>, back: <>The probability of <strong>A</strong> given that <strong>B</strong> happened.</> },
+	{ front: "Precision vs recall, in one line each?", back: "Precision: of what you flagged, how much was right. Recall: of what was there, how much you found." },
 ]} />
 
 ## Stepper
@@ -55,15 +75,60 @@ Think about it: what happens when you divide by zero?
 
 ## Playground
 
+Compound growth — the output is non-linear in every control:
+
 <Playground
 	controls={[
-		{ id: "requests", label: "Requests/sec", min: 10, max: 1000, step: 10, value: 100 },
-		{ id: "latency", label: "Avg latency (ms)", min: 1, max: 50, step: 1, value: 10 },
+		{ id: "principal", label: "Principal ($)", min: 1000, max: 50000, step: 1000, value: 10000 },
+		{ id: "rate", label: "Annual rate (%)", min: 1, max: 15, step: 0.5, value: 7 },
+		{ id: "years", label: "Years", min: 1, max: 40, step: 1, value: 20 },
+		{ id: "monthly", label: "Compound monthly", type: "toggle", value: true },
 	]}
 	outputs={[
-		{ label: "Throughput", terms: { requests: 1 }, intercept: 0, precision: 0, unit: " req/s" },
-		{ label: "P99 estimate", terms: { latency: 3.5 }, intercept: 2, precision: 1, unit: " ms" },
+		{ label: "Final balance ($)", precision: 0, compute: (v) => {
+			const periods = v.monthly ? 12 : 1;
+			return v.principal * Math.pow(1 + v.rate / 100 / periods, periods * v.years);
+		} },
+		{ label: "Growth multiple", precision: 2, unit: "×", compute: (v) => {
+			const periods = v.monthly ? 12 : 1;
+			return Math.pow(1 + v.rate / 100 / periods, periods * v.years);
+		} },
 	]}
+/>
+
+The precision/recall tradeoff, with the controls driving a live chart:
+
+<Playground
+	controls={[
+		{ id: "threshold", label: "Decision threshold", min: 0.1, max: 0.9, step: 0.05, value: 0.5 },
+		{ id: "skew", label: "Positive:negative ratio", type: "select", value: 1, options: [
+			{ label: "Balanced (1:1)", value: 1 },
+			{ label: "Positive-heavy (10:1)", value: 10 },
+		]},
+	]}
+	outputs={[
+		{ label: "Precision", compute: (v) => v.threshold / (v.threshold + (1 - v.threshold) / v.skew) },
+		{ label: "Recall", compute: (v) => 1 - v.threshold },
+		{ label: "F1", compute: (v) => {
+			const p = v.threshold / (v.threshold + (1 - v.threshold) / v.skew);
+			const r = 1 - v.threshold;
+			return p + r === 0 ? 0 : (2 * p * r) / (p + r);
+		} },
+	]}
+	chart={(v) => {
+		const thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+		return {
+			type: "line",
+			data: {
+				labels: thresholds.map((t) => t.toFixed(1)),
+				datasets: [
+					{ label: "Precision", data: thresholds.map((t) => t / (t + (1 - t) / v.skew)) },
+					{ label: "Recall", data: thresholds.map((t) => 1 - t) },
+				],
+			},
+			options: { scales: { y: { min: 0, max: 1 } } },
+		};
+	}}
 />
 
 ## Tabs
@@ -107,9 +172,25 @@ Think about it: what happens when you divide by zero?
 
 ## CodeBlock
 
-<CodeBlock language="rust" title="src/main.rs" code={`fn main() {
-    println!("Hello from Rust!");
+<CodeBlock language="go" title="main.go" code={`package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello from Go!")
 }`} />
+
+## Figure
+
+<Figure
+	src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 480 160'><rect width='480' height='160' fill='rgb(214,211,209)'/><text x='240' y='88' text-anchor='middle' font-family='sans-serif' font-size='20' fill='rgb(68,64,60)'>placeholder image</text></svg>"
+	alt="A grey placeholder rectangle labelled placeholder image"
+	caption="Captions are numbered automatically by a CSS counter."
+/>
+
+## Ref
+
+Inline citations link to the reference list below: React is maintained by Meta<Ref n={1}/>, and MDX lets markdown and components share one file<Ref n={[1, 2]}/>. Clicking a marker highlights the entry it lands on.
 
 ## Sources
 

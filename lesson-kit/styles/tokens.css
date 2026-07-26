@@ -82,6 +82,7 @@ body {
 .lesson {
 	max-width: var(--measure);
 	margin: 0 auto;
+	counter-reset: figure;
 }
 
 h1, h2, h3, h4 {

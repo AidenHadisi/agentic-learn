@@ -1,8 +1,8 @@
-import { Callout, Quiz, Stepper, Step, Tabs, Tab, CodeBlock } from "@learn/components";
+import { Meta, Callout, Quiz, Stepper, Step, Tabs, Tab, CodeBlock, Sources } from "@learn/components";
 
 # Modeling Monthly Visits
 
-<div className="lesson-meta">Train, calibrate, and evaluate a regression model that predicts monthly visits from domain features.</div>
+<Meta>Train, calibrate, and evaluate a regression model that predicts monthly visits from domain features.</Meta>
 
 You have features and labels. Now you need a model that maps one to the other. This section covers model selection, training setup, calibration, evaluation, and confidence intervals — everything needed to go from a feature table to a deployable estimator.
 
@@ -409,12 +409,12 @@ SimilarWeb hides estimates below ~5,000 monthly visits. This is the right call �
 	},
 ]} />
 
-## References
-
-- [Grinsztajn et al. 2022 — Why tree-based models still outperform DL on tabular data](https://arxiv.org/abs/2207.08815)
-- [Xavier 2024 — The Web unpacked: Zipf and power-law analysis](https://arxiv.org/abs/2404.17095)
-- [LightGBM Parameters Tuning](https://lightgbm.readthedocs.io/en/latest/Parameters-Tuning.html)
-- [Optuna — Hyperparameter optimization framework](https://optuna.org/)
-- [MAPIE — Conformal prediction intervals](https://mapie.readthedocs.io/)
-- [Ahrefs — Traffic estimation accuracy](https://ahrefs.com/blog/traffic-estimations-accuracy/)
-- [SparkToro — Which traffic estimate best matches GA](https://sparktoro.com/blog/which-3rd-party-traffic-estimate-best-matches-google-analytics/)
+<Sources list={[
+	{ author: "Grinsztajn et al.", year: "2022", title: "Why tree-based models still outperform DL on tabular data", url: "https://arxiv.org/abs/2207.08815" },
+	{ author: "Xavier", year: "2024", title: "The Web unpacked: Zipf and power-law analysis", url: "https://arxiv.org/abs/2404.17095" },
+	{ title: "LightGBM Parameters Tuning", url: "https://lightgbm.readthedocs.io/en/latest/Parameters-Tuning.html" },
+	{ author: "Optuna", title: "Hyperparameter optimization framework", url: "https://optuna.org/" },
+	{ author: "MAPIE", title: "Conformal prediction intervals", url: "https://mapie.readthedocs.io/" },
+	{ author: "Ahrefs", title: "Traffic estimation accuracy", url: "https://ahrefs.com/blog/traffic-estimations-accuracy/" },
+	{ author: "SparkToro", title: "Which traffic estimate best matches GA", url: "https://sparktoro.com/blog/which-3rd-party-traffic-estimate-best-matches-google-analytics/" },
+]} />

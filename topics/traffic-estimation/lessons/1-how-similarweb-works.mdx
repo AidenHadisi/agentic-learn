@@ -1,8 +1,8 @@
-import { Callout, Quiz, Stepper, Step, Reveal, Scenario, Ordering, Tabs, Tab, Mermaid, Chart, CodeBlock } from "@learn/components";
+import { Meta, Callout, Quiz, Stepper, Step, Reveal, Scenario, Tabs, Tab, Mermaid, Chart, CodeBlock, Sources } from "@learn/components";
 
 # How SimilarWeb Actually Works
 
-<div className="lesson-meta">Understand the methodology behind traffic estimation tools so you know what to replicate — and what to skip.</div>
+<Meta>Understand the methodology behind traffic estimation tools so you know what to replicate — and what to skip.</Meta>
 
 SimilarWeb, Semrush, and Ahrefs all claim to tell you how much traffic any website gets. But they use fundamentally different approaches, and none of them are measuring — they're **estimating**. Understanding how they work (and fail) is the foundation for building your own.
 
@@ -224,18 +224,17 @@ One subtle but critical point: **GA Users ≠ Visits ≠ Sessions ≠ Unique Vis
 
 ## Putting It Together: What to Replicate
 
-<Ordering
-	items={[
-		{ id: "labels", label: "Collect ground-truth labels (real visits for a set of sites)" },
-		{ id: "features", label: "Gather public features that correlate with traffic (DNS, SEO, ad signals)" },
-		{ id: "model", label: "Train a model: features → estimated visits" },
-		{ id: "calibrate", label: "Calibrate per-niche to reduce systematic bias" },
-		{ id: "confidence", label: "Ship with confidence intervals, refuse tiny sites" },
-	]}
-	correct={["labels", "features", "model", "calibrate", "confidence"]}
-	success="Correct — this is the pipeline we'll build across the remaining sections."
-	retry="Think about what you need before you can train a model. Labels and features come first."
-/>
+<Stepper>
+	<Step>Collect ground-truth labels (real visits for a set of sites)</Step>
+	<Step>Gather public features that correlate with traffic (DNS, SEO, ad signals)</Step>
+	<Step>Train a model: features → estimated visits</Step>
+	<Step>Calibrate per-niche to reduce systematic bias</Step>
+	<Step>Ship with confidence intervals, refuse tiny sites</Step>
+</Stepper>
+
+<Callout variant="tip">
+Correct — this is the pipeline we'll build across the remaining sections.
+</Callout>
 
 **What we're keeping from SimilarWeb's approach:**
 - Panel-calibrated estimation (we have labels)
@@ -306,10 +305,10 @@ One subtle but critical point: **GA Users ≠ Visits ≠ Sessions ≠ Unique Vis
 	},
 ]} />
 
-## References
-
-- [SimilarWeb Data Methodology](https://support.similarweb.com/hc/en-us/articles/360001631538)
-- [SparkToro — Which 3rd-Party Traffic Estimate Best Matches GA?](https://sparktoro.com/blog/which-3rd-party-traffic-estimate-best-matches-google-analytics/)
-- [Ahrefs — How Accurate Are Search Traffic Estimations?](https://ahrefs.com/blog/traffic-estimations-accuracy/)
-- [Jansen et al. 2022 — Measuring user interactions with websites (PLOS One)](https://pmc.ncbi.nlm.nih.gov/articles/PMC9140287/)
-- [Semrush — How We Turn Traffic Data Into Intelligence](https://www.semrush.com/kb/1211-how-semrush-turns-traffic-data-into-traffic-intelligence)
+<Sources list={[
+	{ title: "SimilarWeb Data Methodology", url: "https://support.similarweb.com/hc/en-us/articles/360001631538" },
+	{ author: "SparkToro", title: "Which 3rd-Party Traffic Estimate Best Matches GA?", url: "https://sparktoro.com/blog/which-3rd-party-traffic-estimate-best-matches-google-analytics/" },
+	{ author: "Ahrefs", title: "How Accurate Are Search Traffic Estimations?", url: "https://ahrefs.com/blog/traffic-estimations-accuracy/" },
+	{ author: "Jansen et al.", year: "2022", title: "Measuring user interactions with websites (PLOS One)", url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC9140287/" },
+	{ author: "Semrush", title: "How We Turn Traffic Data Into Intelligence", url: "https://www.semrush.com/kb/1211-how-semrush-turns-traffic-data-into-traffic-intelligence" },
+]} />

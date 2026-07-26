@@ -102,13 +102,15 @@ A teacher never lectures from a skim. Become a master of everything this section
 
 Understand the material itself: textbooks, official docs, tutorials, research papers, recent developments — not just definitions, but why things are the way they are, how the pieces connect, and where the subtleties hide.
 
-Also study how the best existing teaching material teaches it — analogies, worked examples, visualizations, exercise styles that actually land — so you borrow proven pedagogy instead of inventing explanations blind.
+**Go wide.** A lesson built on three sources reads like a summary of whichever one you found first. Cast a broad net — papers, specs, official docs, textbooks, university course notes, conference talks, practitioner blogs, changelogs, forum threads where people argue about the hard parts, Wikipedia for orientation. Nothing is banned; judge each source on whether it's actually right, chase the primary source when a claim carries weight, and check when it was written, because fast-moving fields go stale quietly. Breadth is what turns a skim into fluency, so err toward reading more than you think you need.
+
+**Study the teaching, not just the subject.** Anything worth learning has already been explained well by someone. Go find those explanations — the tutorial everyone links, the lecture with the analogy that finally makes it click, the textbook chapter that sequences it right, the blog post that nails the misconception — and work out *why* they land. Borrowing a proven explanation beats inventing one blind, and seeing five attempts at the same idea shows you which order the pieces have to come in.
 
 Dispatch parallel research subagents, each on a different sub-topic or angle. Every brief must:
 
 - State the audience: "smart beginner who knows only: \<list from Established Knowledge and completed sections\>"
 - Demand **explanatory** material: intuitions, analogies, worked examples with real numbers, common misconceptions, how good courses sequence and teach it. Fact lists and formula dumps are useless — say so.
-- Ask for authoritative sources with URLs for the Sources block
+- Ask for lots of sources with URLs and dates, and for the best existing explanations they found, so you can learn from how those teach
 
 Synthesize into your own understanding. Never paste subagent output into a lesson.
 
@@ -132,7 +134,7 @@ Write `lessons/<n>-<slug>.mdx` for the student in your journal. Assume they know
 
 **Self-check.** Reread through the student's eyes: "Could someone who has never seen this term follow every paragraph?" Any unexplained term fails — fix it before building.
 
-**Mechanics.** Catalog components only (`lesson-kit/README.md`). End with practice exercises, a quiz, and a `Sources` block.
+**Mechanics.** Catalog components only (`lesson-kit/README.md`). Cite claims inline with `<Ref>` so each one points at the source behind it. End with practice exercises, a quiz, and a `Sources` block.
 
 ## Step 4 — Build and verify
 

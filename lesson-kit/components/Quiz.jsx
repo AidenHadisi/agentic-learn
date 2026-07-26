@@ -1,27 +1,21 @@
 import React, { useState, useCallback } from "react";
 
-function shuffleOptions(question) {
-	const order = question.options.map((_, i) => i);
-	for (let i = order.length - 1; i > 0; i--) {
+// Answers are validated at build time by scripts/lesson.mjs. Tagging the correct
+// option before shuffling keeps the authored index from having to be remapped.
+function prepareQuestion({ answer, options, ...rest }) {
+	const correctIndex = typeof answer === "number" ? answer : options.indexOf(answer);
+	const prepared = options.map((text, i) => ({ text, correct: i === correctIndex }));
+	for (let i = prepared.length - 1; i > 0; i--) {
 		const j = Math.floor(Math.random() * (i + 1));
-		[order[i], order[j]] = [order[j], order[i]];
+		[prepared[i], prepared[j]] = [prepared[j], prepared[i]];
 	}
-	return {
-		...question,
-		options: order.map((i) => question.options[i]),
-		answer: order.indexOf(question.answer),
-	};
+	return { ...rest, options: prepared };
 }
 
 function QuizQuestion({ question, onAnswer }) {
 	const [selected, setSelected] = useState(null);
 	const answered = selected !== null;
-	const isCorrect = selected === question.answer;
-
-	const handleSelect = (i) => {
-		if (answered) return;
-		setSelected(i);
-	};
+	const isCorrect = answered && question.options[selected].correct;
 
 	return (
 		<div className="quiz__question">
@@ -30,7 +24,7 @@ function QuizQuestion({ question, onAnswer }) {
 				{question.options.map((opt, i) => {
 					let cls = "quiz__option";
 					if (answered) {
-						if (i === question.answer) cls += " quiz__option--correct";
+						if (opt.correct) cls += " quiz__option--correct";
 						else if (i === selected) cls += " quiz__option--incorrect";
 					}
 					return (
@@ -38,10 +32,10 @@ function QuizQuestion({ question, onAnswer }) {
 							key={i}
 							className={cls}
 							disabled={answered}
-							onClick={() => handleSelect(i)}
+							onClick={() => setSelected(i)}
 						>
 							<span className="quiz__letter">{String.fromCharCode(65 + i)}</span>
-							{opt}
+							{opt.text}
 						</button>
 					);
 				})}
@@ -62,7 +56,7 @@ function QuizQuestion({ question, onAnswer }) {
 }
 
 export function Quiz({ questions: rawQuestions }) {
-	const [questions] = useState(() => rawQuestions.map(shuffleOptions));
+	const [questions] = useState(() => rawQuestions.map(prepareQuestion));
 	const [current, setCurrent] = useState(0);
 	const [correct, setCorrect] = useState(0);
 	const [finished, setFinished] = useState(false);

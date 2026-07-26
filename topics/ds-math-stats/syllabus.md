@@ -20,14 +20,20 @@ A refresher and deepening of the core mathematical toolkit for data science and 
 
 ## Sections
 - [x] 1. **Descriptive Statistics** — Summarize data with center, spread, shape; choose robust measures; connect to ML loss functions
-- [ ] 2. **Probability Foundations** — Conditional probability, Bayes' theorem, expected value, variance; the language of uncertainty
-- [ ] 3. **Distributions Zoo** — When and why each distribution arises (Normal, Binomial, Poisson, Exponential, etc.); generative stories
-- [ ] 4. **From Samples to Inference** — Sampling distributions, standard error, CLT, confidence intervals
-- [ ] 5. **Hypothesis Testing & A/B Testing** — p-values, power, Type I/II errors, multiple testing, experiment design pitfalls
-- [ ] 6. **Correlation & Regression** — Pearson/Spearman, OLS, multiple regression, R², assumptions, confounding
-- [ ] 7. **Vectors, Matrices & Linear Systems** — Operations, dot products, Ax=b, least squares as projection
-- [ ] 8. **Eigen, SVD & Dimensionality Reduction** — Eigenvalues/vectors, spectral theorem, SVD, PCA, low-rank approximation
-- [ ] 9. **Norms, Distances & Regularization** — L1/L2 norms, distance metrics, Ridge/Lasso, sparsity
-- [ ] 10. **Derivatives & Gradients** — Single-variable derivatives, partial derivatives, gradient vector, directional derivatives
-- [ ] 11. **The Chain Rule & Backpropagation** — Composite functions, computational graphs, reverse-mode autodiff
-- [ ] 12. **Gradient Descent & Training Dynamics** — Batch/SGD/mini-batch, momentum, Adam, learning rates, convexity, convergence
+- [ ] 2. **Probability Foundations** — Sample spaces, the rules of probability, joint/marginal/conditional, independence, law of total probability
+- [ ] 3. **Bayes' Theorem** — Inverting a conditional; prior/likelihood/posterior, base rates, sequential updating, precision vs recall
+- [ ] 4. **Random Variables, Expectation & Variance** — Random variables, E[X] as the population twin of the sample mean, linearity, Var(X), expected loss
+- [ ] 5. **Distributions Zoo** — When and why each distribution arises (Normal, Binomial, Poisson, Exponential, etc.); generative stories
+- [ ] 6. **From Samples to Inference** — Sampling distributions, standard error, CLT, confidence intervals
+- [ ] 7. **Hypothesis Testing & A/B Testing** — p-values, power, Type I/II errors, multiple testing, experiment design pitfalls
+- [ ] 8. **Correlation & Regression** — Pearson/Spearman, OLS, multiple regression, R², assumptions, confounding
+- [ ] 9. **Vectors, Matrices & Linear Systems** — Operations, dot products, Ax=b, least squares as projection
+- [ ] 10. **Eigen, SVD & Dimensionality Reduction** — Eigenvalues/vectors, spectral theorem, SVD, PCA, low-rank approximation
+- [ ] 11. **Norms, Distances & Regularization** — L1/L2 norms, distance metrics, Ridge/Lasso, sparsity
+- [ ] 12. **Derivatives & Gradients** — Single-variable derivatives, partial derivatives, gradient vector, directional derivatives
+- [ ] 13. **The Chain Rule & Backpropagation** — Composite functions, computational graphs, reverse-mode autodiff
+- [ ] 14. **Gradient Descent & Training Dynamics** — Batch/SGD/mini-batch, momentum, Adam, learning rates, convexity, convergence
+
+<!-- 2026-07-24: original Section 2 bundled conditional probability, Bayes, and expectation/variance into one
+lesson. Research showed that is three chapters at this depth, so it was split into 2, 3, and 4 and the rest renumbered. -->
+

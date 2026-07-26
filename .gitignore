@@ -1,6 +1,8 @@
 .DS_Store
 scratch/
 node_modules/
+.cache/
+/index.html
 lesson-kit/dist/
 lesson-kit/gallery.html
 .cursor/lesson-kit/dist/

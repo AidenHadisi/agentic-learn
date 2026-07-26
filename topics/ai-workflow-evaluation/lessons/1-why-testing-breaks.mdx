@@ -1,0 +1,344 @@
+import { Meta, Callout, Quiz, Stepper, Step, Reveal, Scenario, Mermaid, Tabs, Tab, CodeBlock, Ref, Sources } from "@learn/components";
+
+# Why AI Systems Break Normal Testing
+
+<Meta>From assertion to measurement — and a map of the whole field</Meta>
+
+## The Change You Cannot Verify
+
+You maintain a support workflow. A ticket comes in; one model call classifies it; a retrieval step pulls the relevant policy pages; a second model call drafts a reply; if the ticket is a refund request, the workflow calls a refund tool with an amount and an order ID.
+
+<Mermaid chart={`flowchart LR
+	T["Incoming ticket"] --> C["1. Classify intent"]
+	C --> R["2. Retrieve policy pages"]
+	R --> D["3. Draft reply"]
+	D --> X["4. Refund tool call"]
+	X --> O["Reply sent"]
+	D --> O
+`} />
+
+Today you want to improve the drafting prompt so replies stop sounding robotic. You edit it, run five tickets you keep in a scratch file, read the outputs, decide they look better, and ship. Two weeks later somebody notices refunds are being issued for orders outside the return window.
+
+Nothing in your instinct was lazy. It is exactly the instinct that works everywhere else in your stack: change code, run the tests, read the diff, ship. This lesson is about why that instinct fails here — not as a slogan, but mechanically — and what replaces it.
+
+## Property One: The Same Input Does Not Give the Same Output
+
+Every test you have ever written assumes that running the code twice on the same input does the same thing. Break that assumption and the words "pass" and "fail" stop meaning anything stable.
+
+The obvious source is sampling. A language model produces, at each position, a probability distribution over possible next tokens, and by default the serving system draws from that distribution rather than always taking the most likely token. The `temperature` parameter controls how much the draw favors likely tokens. Set temperature to zero and the system takes the single highest-probability token every time — which sounds like determinism, and is where most engineers stop reading.
+
+It is not determinism. Here is the measurement. In 2025, researchers at Thinking Machines Lab sent the *same* prompt ("Tell me about Richard Feynman") to the *same* open-weights model at temperature zero, one thousand times, asking for a thousand tokens each. They got **80 distinct completions**. The most common one appeared 78 times out of 1000. Every completion was identical for the first 102 tokens; at token 103, 992 of them continued with "Queens, New York" and 8 continued with "New York City", and from there they drifted apart.<Ref n={1}/>
+
+Why? Two facts stacked on each other.
+
+The first is that floating-point addition is not associative. In real arithmetic, $(a + b) + c$ and $a + (b + c)$ are the same number. In floating point they are not, because each intermediate result gets rounded to a fixed number of bits, and rounding depends on the magnitudes you happen to be adding. The same researchers summed the same set of numbers in 10,000 different orders and got 102 different totals.<Ref n={1}/> So *if* the order of a summation changes, the numeric result can change too.
+
+The second fact is where the order actually changes. An inference server does not process your request alone. It packs concurrent requests into a batch, and batch size depends on how busy the server is at that instant. Many of the fast GPU routines inside a model — the ones that sum across a row of numbers — choose *how to split the summation across GPU cores* based on the shape of the batch. Different split, different summation order, slightly different numbers coming out.
+
+Put those together and you get the real mechanism: **your output can depend on what other people happened to be asking at the same moment.** The model's internal scores shift in the last decimal places, and almost always the top token is unaffected. But at one position out of a few hundred, two candidate tokens are nearly tied, the tiny shift flips which one wins, and the completion goes somewhere else entirely. Those researchers rewrote the routines to always split the work the same way regardless of batch size, reran the experiment, and got 1000 identical completions — at roughly twice the latency.<Ref n={1}/>
+
+<Callout variant="key" title="Temperature zero is a sampling guarantee, not an execution guarantee">
+Setting temperature to zero removes the deliberate randomness. It does not make the computation reproducible, because reproducibility also depends on the serving infrastructure, which you do not control and which changes with load.
+</Callout>
+
+There is a second, slower kind of drift: the thing on the other end of the API is not stable over time. Providers offer a `seed` parameter, but document it as best-effort rather than guaranteed, and expose a fingerprint value identifying the backend configuration so you can at least *notice* when it changes.<Ref n={2}/> Model aliases silently point at new weights; dated snapshots get retired on a schedule.
+
+The consequences are measurable. One study tracked what happened to a text-classification task across successive updates within a single model family. In **55% of update pairs, the effect was not uniform across prompts** — the same update improved some prompts and degraded others. One concrete case: a simple prompt lost 9.6 percentage points of accuracy while a few-shot prompt on the same task *gained* 5.1 points, from the same update.<Ref n={3}/> The prompt you carefully selected as best can stop being best without you touching a line of code.
+
+<Callout variant="warn" title="The uncomfortable consequence">
+A test that asserts "this prompt produces this output" is not a test that occasionally flakes. It is a test that is wrong about what kind of thing it is measuring. The variation is a property of the system, not a bug in the harness.
+</Callout>
+
+## Property Two: There Is No Single Correct Output
+
+Suppose you fix the nondeterminism entirely. Testing still does not work, because the space of *correct* answers is enormous.
+
+Ask your workflow to acknowledge a shipping delay. All of these are fine:
+
+- "Sorry about the delay — your order is now expected Thursday. Here's the tracking link."
+- "Thanks for your patience. We've had a warehouse backup; your package should arrive by Thursday."
+- "Your order was delayed at our fulfillment center and is now scheduled to arrive Thursday, 14 May."
+
+They share almost no words. Exact-match assertions reject all but one arbitrary phrasing. So engineers reach for the next tool, a substring or regex check, and get one of three bad outcomes.
+
+<CodeBlock language="python" title="Three ways a string assertion goes wrong" code={`assert "Thursday" in reply        # 1. Brittle: "later this week" is fine and fails
+assert reply.startswith("Hi")     # 2. False green: "Hi! I cannot help." passes
+# 3. Frozen: the suite breaks on every wording change, so nobody
+#    improves the prompt anymore, and the tests "protect" a bad reply`} />
+
+The first says a good reply is bad. The second says a bad reply is good. The third is subtler and the most damaging in practice: a suite that fails constantly on harmless rewording trains the team to stop changing prompts, so the tests end up defending the current quality level rather than raising it.
+
+The mismatch is that string identity is not the property you care about. You care about whether the reply *is accurate, on-policy, and useful* — and none of those is a function of which tokens appeared.
+
+## Property Three: You Discover the Criteria by Looking at Outputs
+
+The third break is the one engineers resist longest, because it contradicts how specifications are supposed to work.
+
+Normal engineering: write the spec, implement, assert the spec holds. That requires knowing the criteria before you see the outputs. For LLM work you frequently do not, and cannot.
+
+Researchers studying how practitioners build automated graders documented this directly and named it **criteria drift**: you need criteria in order to grade outputs, but grading outputs is how you discover the criteria. In their study, people refined definitions mid-way through grading, added failure modes they had not imagined when they saw new bad examples, and sometimes went back and changed labels they had already assigned. Some criteria were genuinely *output-dependent* — nobody could have written them from a product spec in advance.<Ref n={4}/>
+
+Your support workflow illustrates it. Before launch, "a good reply" means accurate, polite, and concise. Then you read two hundred real replies and discover criteria you never wrote down: it must not promise a delivery date the tracking system has not confirmed; it must not apologize four times in one paragraph; when the customer is already angry it must not open with a cheerful greeting. You did not omit these from the spec by oversight. You learned them by reading outputs.
+
+<Callout variant="key" title="The three breaks, together">
+Nondeterminism breaks *repeatability*. Open-ended output breaks *the oracle* — the ability to say mechanically whether an output is correct. Criteria drift breaks *the spec-first order of work*. A unit test needs all three to hold.
+</Callout>
+
+## What Survives
+
+This is not an argument that your testing skills are worthless here. Most of them transfer intact — to the deterministic shell around the model.
+
+| Still works, unchanged | Why it survives |
+|---|---|
+| JSON schema / type validation on model output | The *shape* of a string is a closed, checkable property |
+| Tool-call contract checks (right function, required args, valid enum values) | Same — a finite, decidable contract |
+| Tests on non-model nodes: parsers, ID lookups, retries, auth, database writes | Ordinary deterministic code |
+| Invariant checks a computer can decide: "every order ID cited must exist in the retrieved records" | Decidable against known data |
+
+What does not transfer is exact-string equality on generated text, and the idea that one failing example should turn the build red. Keep the assertions. Change what you expect from them: they catch *shape* failures, and shape failures are a minority of what actually goes wrong.
+
+## Two Failures That Prove the Point
+
+In November 2022, an Air Canada customer asked the website's chatbot about bereavement fares. The bot described a policy allowing a retroactive refund — a policy that did not exist. The customer booked accordingly, was refused the refund, and took it to a tribunal, which in February 2024 found negligent misrepresentation and ordered the airline to pay roughly CAD $650 plus fees.<Ref n={5}/> Notice what kind of failure this was: valid JSON, fluent English, correct tone, on topic, confidently wrong about a fact. Every deterministic check you could write would have passed.
+
+In April 2025, OpenAI shipped an update to GPT-4o that made it markedly sycophantic — validating users' statements including harmful ones. It rolled out on 25 April and was rolled back on 28 April. In the follow-up writeup, OpenAI stated plainly that the behavior was not flagged in internal hands-on testing and that they did not have deployment evaluations specifically tracking sycophancy.<Ref n={6}/> A well-resourced lab, with real internal review, shipped a regression on a dimension it was not measuring.
+
+The lesson in both is the same. What broke was not something an assertion catches. It was a *rate of a behavior* that nobody was counting.
+
+## The Shift: From Assertion to Measurement
+
+Here is the reframe the rest of the course is built on.
+
+A **test** is a proof about a deterministic function: for this input, this must be true, always, or the build is red. A single counterexample is decisive.
+
+An **eval** is an estimate about a stochastic process: across a sample of representative inputs, this property held **this often**, and that rate is higher or lower than the rate the previous version got. A single counterexample is a data point, not a verdict.
+
+That is why "pass/fail" gets replaced by "68 out of 100" — and why the *comparison* matters more than the absolute. You will rarely be able to say "this workflow is good." You will very often be able to say "this version resolves 12 more tickets per hundred than last version, and the specific thing it fixed is refund-window errors." That is enough to make decisions with.
+
+Two analogies help, and both have edges worth knowing.
+
+<Tabs>
+	<Tab label="Performance benchmarking">
+		You already accept that latency is a distribution, not a number; that a single run proves nothing; that you compare against a recorded baseline; that you report a percentile rather than "it's fast." Quality measurement works the same way, and this is the closest analogy to how eval work actually feels. **Where it breaks:** latency has an unambiguous definition and a hardware ground truth. "Good reply" does not — you have to construct the definition, which is the hard part of the job.
+	</Tab>
+	<Tab label="Manufacturing quality control">
+		A factory does not inspect every widget. It samples continuously, charts the defect rate, and investigates when the rate shifts. A supplier change — analogous to a model update — is the classic trigger for a shift. This analogy is why sampling and rate-tracking feel natural once adopted. **Where it breaks:** a widget has a spec sheet with tolerances. Your criteria drift as you learn, so the spec sheet is being written while the line runs.
+	</Tab>
+	<Tab label="Flaky tests (a trap)">
+		It is tempting to say "LLM outputs are just flaky tests." Resist it. A flaky test is a defect in the test — a race condition, a leaky fixture — and the correct response is to fix it until it is deterministic. Here the variation is *correct behavior of the system under test*. Treating it as flakiness leads people to chase determinism (pin the seed, drop the temperature, retry until green) instead of measuring the distribution.
+	</Tab>
+</Tabs>
+
+## A Map of the Field
+
+"Eval" is used loosely enough to be confusing, so here are the axes that make any evaluation question precise. Every one of them shows up in your support workflow.
+
+<Stepper>
+	<Step title="Model eval vs. system eval">
+		A **model eval** measures a base model on shared public tasks — knowledge exams, coding-fix suites, human-preference rankings. A **system eval** measures *your* workflow: your prompts, your retrieval, your tools, your traffic. Both are real, and they answer different questions. Model evals filter candidates ("is this model in the right capability band at all?"). Only a system eval can be a ship gate, because rank on a public suite does not predict behavior on your task. Reports of "better" model versions degrading specific products — tool calls becoming less reliable, structured output drifting out of the expected format — are routine.<Ref n={7}/>
+	</Step>
+	<Step title="Offline vs. online">
+		**Offline** means running a fixed, curated set of cases through a candidate version, in batch, before release. It is reproducible and lets you compare two versions on identical inputs. **Online** means scoring what actually happened on live traffic. Offline cannot see a silent provider update or a shift in what users are asking. Online cannot stop a bad version from reaching users, and rarely has known-correct answers to compare against. "Offline green, online red" is the standard symptom of an offline set that no longer resembles real traffic.
+	</Step>
+	<Step title="Reference-based vs. reference-free">
+		**Reference-based** scoring compares the output to a known-correct answer you stored in advance: the invoice total really is 1842.50, the ticket really is a billing question. **Reference-free** scoring judges the output with no stored answer — is this reply on-policy, is it supported by the retrieved pages, is the tone right. The operational test is simply: *does scoring this case require a stored expected answer, or only the input and the output?* Your classify node admits references. Your drafting node mostly does not.
+	</Step>
+	<Step title="Node-level vs. end-to-end">
+		A **node-level** eval scores one step in isolation: did retrieval surface the right policy page, given this ticket? An **end-to-end** eval scores the user-visible outcome: did this ticket get correctly resolved? End-to-end is what you actually promise; node-level is what tells you where to fix. A node-level suite that is all green with a red end-to-end number is informative — it says the problem is in how the steps compose, not in any single step.
+	</Step>
+</Stepper>
+
+These axes combine freely. "Did last night's model update break invoice field extraction?" is a system eval, run offline, reference-based, at node level. "Are replies drifting off-policy this week?" is a system eval, run online, reference-free, end-to-end.
+
+### Neighbors that are not evals
+
+Four words get used interchangeably with "eval" and shouldn't be.
+
+| Thing | What it does | When it runs | Does it block anything? |
+|---|---|---|---|
+| **Test** | Asserts a decidable property | On every commit | Blocks the merge |
+| **Eval** | Measures a rate on a sample | Before release, or on sampled live traffic | Can gate a release; never a single request |
+| **Guardrail** | Enforces a rule inside the request — refuse, redact, regenerate | Every request, in the hot path | Yes, that is its whole purpose |
+| **Tracing** | Records what happened: inputs, outputs, timings, each step | Always | No — it is the raw material everything else reads |
+
+The eval/guardrail line is the one that matters most in practice. A guardrail is *enforcement*, paid for in latency on every single request, and its false positives hurt real users. An eval is *measurement*, run out of band, and its false positives only cost you a confusing number. A slow model-based quality check is a fine evaluator and a terrible guardrail. And the rate at which a guardrail fires is not a quality metric — it tells you how often you caught something, not how often something happened.
+
+### The words for the parts of an eval
+
+You will hit these terms in every vendor's documentation, used slightly differently by each. Precise versions:
+
+A **case** is one input, optionally with a stored expected answer and some metadata. A **dataset** is a curated collection of cases; when it is your carefully maintained primary set, people call it a **golden set**. A **scorer** — also called an evaluator or grader, depending on whose docs you are reading — is the thing that turns one output into one score. A **metric** is the aggregate over all the cases: the pass rate, the average score. A **run** or **experiment** is one execution of a dataset through a version of your system with a set of scorers attached; a **baseline** is the previously accepted run you compare against. A **trace** is the full record of one request through your workflow, and a **span** is one step inside it.
+
+<Callout variant="info" title="Terminology warning">
+"Eval" itself is overloaded three ways: the practice ("we need evals"), the dataset ("we released a new eval"), and the run ("the eval finished, we're at 71%"). Vendors also disagree on scorer vs. evaluator vs. grader. When reading docs, resolve the word from context rather than assuming it matches this course.
+</Callout>
+
+## What Makes an Eval Worth Having
+
+Not every measurement is worth its cost. Five properties, and they trade against each other.
+
+**Validity** is whether the thing you measure is the thing you care about. This is the hardest one and the most commonly failed. A 2025 review of 445 language-model benchmarks found weak validity to be pervasive: vaguely defined target phenomena, task sets that do not represent the thing they claim to measure, and results reported without any statistical treatment.<Ref n={8}/> A scorer that rewards polite-sounding replies is measuring politeness, whatever you named the column.
+
+**Reliability** is whether the same system scored twice gets the same number. Given the first half of this lesson, you already know why that is not free.
+
+**Discriminating power** is whether the eval can tell two systems apart. A set of cases your workflow already passes 100% of cannot show you an improvement or a regression; it has no room left to move.
+
+**Actionability** is whether a failure tells you what to fix. This is where node-level scoring earns its cost — an end-to-end number tells you that you have a problem, not where it is.
+
+**Cost** is human labeling time, model calls, and the maintenance of the whole apparatus.
+
+The tensions are real. An exact-match check on extracted invoice fields is cheap and highly reliable, and it will mark a correctly-parsed date in a different format as wrong — cheap and reliable, weak validity. A careful human rubric applied by domain experts has strong validity and costs more than the feature. Most of the craft in this field is picking a defensible point on that surface, per criterion, rather than trying to win all five.
+
+## Putting It Together
+
+Three properties of LLM systems break the testing model: outputs are not reproducible even at temperature zero, correct outputs form a huge equivalence class that string matching cannot describe, and the criteria themselves emerge from reading outputs rather than from a spec. What survives is testing the deterministic shell — schemas, tool contracts, ordinary code. What replaces the rest is measurement: a rate, on a sample, compared against a baseline.
+
+The map gives you somewhere to put every question you will ask from now on. Is it about the model or your system? Offline or online? With a stored answer or without? One node or the whole graph? And is what you are building actually an eval, or is it a test, a guardrail, or just tracing?
+
+<Reveal prompt="Practice 1 — classify five questions from your own work">
+For each of these, write down the four axis positions (model/system, offline/online, reference-based/free, node/end-to-end) and whether it is best served by an eval, a test, a guardrail, or tracing. Then do the same for three questions from a workflow you actually own.
+
+1. "Did switching the drafting model make replies less accurate?"
+2. "Is the refund tool ever called with an order ID that wasn't in the retrieved records?"
+3. "Are we getting more angry follow-up messages this month than last?"
+4. "Is our retrieval good enough on refund-policy questions?"
+5. "Should we be on the new model version at all?"
+
+There is no single right answer for some of them — question 2 in particular is defensible as three different things. Write down *why* you chose, because the reasoning is the skill.
+</Reveal>
+
+<Reveal prompt="Practice 2 — find your own criteria drift">
+Take any prompt you have written that says something like "be helpful and accurate." Pull twenty real outputs from it and read them all. Write down every rule you find yourself applying that is not in the prompt — every time you think "that's fine but it shouldn't do *that*." Those unwritten rules are your real criteria. Count how many of them you could have written before reading the outputs.
+</Reveal>
+
+<Reveal prompt="Practice 3 — measure your own nondeterminism">
+Pick one node of one workflow. Send the identical input 20 times at whatever settings you run in production. Count how many distinct outputs you get, and whether any of the differences change the *meaning* rather than the wording. Then do it again at temperature 0. This takes ten minutes and permanently changes how you think about your scratch-file testing.
+</Reveal>
+
+## Classify Before You Measure
+
+<Scenario
+	start="start"
+	nodes={[
+		{ id: "start", title: "Pick a question", body: "Your team asks four questions this week. Which do you want to place on the map?", choices: [
+			{ label: "A — Did the model upgrade break invoice field extraction?", next: "a" },
+			{ label: "B — Are we leaking customer emails in replies right now?", next: "b" },
+			{ label: "C — The new model tops the leaderboards, should we switch?", next: "c" },
+			{ label: "D — End-to-end resolution dropped 8 points but every node scores the same", next: "d" },
+		]},
+		{ id: "a", title: "Question A", body: "Extraction pulls vendor, total, and date from uploaded invoices. Overnight the provider moved you to a new snapshot. How do you find out what broke?", choices: [
+			{ label: "Offline, reference-based, node-level eval on stored invoices", next: "a_ok" },
+			{ label: "Add a guardrail that blocks malformed extractions", next: "a_guard" },
+			{ label: "Watch production for a week and see if complaints rise", next: "a_slow" },
+		]},
+		{ id: "a_ok", title: "Correct", body: "You have stored invoices with known-correct field values, so references exist. The question is about one node, and you want it reproducible and comparable against the old snapshot — that is offline.", feedback: "This is the easiest quadrant in the whole field: a node with a decidable right answer. Build these first." },
+		{ id: "a_guard", title: "Useful, but not an answer", body: "A guardrail that rejects malformed output protects users going forward. It does not tell you whether extraction accuracy fell, because it only sees shape, not correctness.", feedback: "Enforcement is not measurement. Ship the guardrail if you like — you still need the eval.", choices: [{ label: "Back to menu", next: "start" }] },
+		{ id: "a_slow", title: "Too slow, and confounded", body: "Complaint volume moves for a dozen reasons. You have stored invoices and known answers sitting right there — you can have the answer in an hour.", feedback: "Prefer offline when you have references and a fixed question.", choices: [{ label: "Back to menu", next: "start" }] },
+		{ id: "b", title: "Question B", body: "Replies must never contain another customer's email address. What do you build?", choices: [
+			{ label: "A guardrail on the hot path, plus tracking of how often it fires", next: "b_ok" },
+			{ label: "An offline eval on a curated set of tricky tickets", next: "b_partial" },
+			{ label: "Only an online eval on sampled traffic", next: "b_partial2" },
+		]},
+		{ id: "b_ok", title: "Right instinct", body: "This is enforcement: the harm happens the moment the reply is sent, so a check has to run inside the request. Detecting an email address is decidable in code, so the latency cost is small.", feedback: "Note the trap in the second half — how often the guardrail fires is a catch count, not a leak rate. It cannot tell you about leaks it missed." },
+		{ id: "b_partial", title: "Necessary, not sufficient", body: "A curated set is genuinely useful for checking whether the guardrail catches known patterns. But an offline set cannot protect the request happening right now.", feedback: "When the failure is unacceptable rather than merely undesirable, you need enforcement in the path.", choices: [{ label: "Back to menu", next: "start" }] },
+		{ id: "b_partial2", title: "Detection without prevention", body: "Sampling live traffic tells you it happened. It does not stop it, and if you sample 5% you will miss most instances.", feedback: "Measurement and enforcement are different jobs.", choices: [{ label: "Back to menu", next: "start" }] },
+		{ id: "c", title: "Question C", body: "A new model version leads on public knowledge and coding suites. Your CTO asks whether to switch. What do you say?", choices: [
+			{ label: "Leaderboards set a capability floor; decide on our own cases", next: "c_ok" },
+			{ label: "Yes — it beats our current model on every public benchmark", next: "c_bad" },
+			{ label: "No — public benchmarks are meaningless", next: "c_over" },
+		]},
+		{ id: "c_ok", title: "Correct", body: "Public results are a cheap filter for whether a model is plausibly in range. The decision belongs to a system eval on your own traffic, because your workflow depends on things no benchmark measures — your tool schemas, your policy text, your formatting requirements.", feedback: "Documented cases exist of newer versions degrading specific products while scoring higher publicly." },
+		{ id: "c_bad", title: "The classic mistake", body: "Benchmark rank measures the model on someone else's tasks. Your workflow's success depends on how the model handles your prompts, your tools, and your data.", feedback: "Run it against your own cases before committing.", choices: [{ label: "Back to menu", next: "start" }] },
+		{ id: "c_over", title: "Overcorrected", body: "Public suites are weak predictors of product quality, but they are not useless — they cheaply rule out models that cannot do the class of task at all.", feedback: "Use them as a floor, not a gate.", choices: [{ label: "Back to menu", next: "start" }] },
+		{ id: "d", title: "Question D", body: "Every node-level score is unchanged from last month. End-to-end resolution fell 8 points. What does that pattern tell you?", choices: [
+			{ label: "The problem is in how the steps compose, or in something no node scores", next: "d_ok" },
+			{ label: "The end-to-end measurement must be broken", next: "d_bad" },
+			{ label: "Nothing — node scores and end-to-end are unrelated", next: "d_bad2" },
+		]},
+		{ id: "d_ok", title: "Correct", body: "Green nodes with a red outcome points at composition — one node's output being fine in isolation but wrong as input to the next — or at a dimension of quality that none of your node scorers looks at.", feedback: "This pattern is exactly why you keep both layers instead of choosing one." },
+		{ id: "d_bad", title: "Possible, but not the first hypothesis", body: "It happens, and you should sanity-check it. But node scores being unchanged is entirely compatible with real end-to-end degradation, because node scorers only see the dimensions you thought to score.", feedback: "Suspect coverage gaps before suspecting the outcome metric.", choices: [{ label: "Back to menu", next: "start" }] },
+		{ id: "d_bad2", title: "Not so", body: "They are related but not equivalent: end-to-end success depends on the nodes and on their interaction. The gap between them is informative.", feedback: "Read the disagreement as a signal, not as noise.", choices: [{ label: "Back to menu", next: "start" }] },
+	]}
+/>
+
+## Quiz
+
+<Quiz questions={[
+	{
+		q: "Your CI pins temperature to 0 and passes a fixed seed, then asserts on exact output strings. A colleague says this makes the suite deterministic. What is the strongest objection?",
+		options: [
+			"Seeds only work above temperature 0.5",
+			"Serving-side batching can change floating-point reduction order, so identical requests can still diverge — and provider weights can change under a stable alias",
+			"Exact strings are fine, the problem is only that CI is slow",
+			"Determinism is guaranteed but the assertions themselves are wrong"
+		],
+		answer: 1,
+		explain: "Temperature 0 removes deliberate sampling randomness only. The measured result — 1000 identical temperature-0 requests producing 80 distinct completions — comes from batch-dependent reduction order, plus provider-side drift over time."
+	},
+	{
+		q: "A team's suite of 40 substring assertions on generated replies has been green for six months, and the product is visibly worse than a competitor's. What is the most likely explanation?",
+		options: [
+			"The assertions are false-greening: they check shape and keywords, which are satisfied by both good and bad replies",
+			"Six months is not long enough to detect quality problems",
+			"The competitor has a better base model, so no eval would help",
+			"The suite needs more assertions of the same kind"
+		],
+		answer: 0,
+		explain: "String checks measure token presence, not accuracy, policy compliance, or usefulness. A reply can satisfy every keyword check and still be unhelpful or wrong — and the green suite actively discourages changing anything."
+	},
+	{
+		q: "Which statement best captures the difference between a test and an eval?",
+		options: [
+			"Tests run in CI and evals run in production",
+			"Tests are written by engineers, evals by product managers",
+			"A test asserts a decidable property must hold on every run; an eval estimates how often a property holds across a sample, and is read against a baseline",
+			"Evals are just tests with a tolerance threshold"
+		],
+		answer: 2,
+		explain: "The distinction is proof about a deterministic function versus estimation about a stochastic process. Where an eval runs is a separate axis — plenty of evals run in CI."
+	},
+	{
+		q: "You want to know whether replies stay on-policy. You build a model-based checker that takes about two seconds per reply, and propose running it on every request to block bad replies. What is wrong?",
+		options: [
+			"Nothing — this is the standard design",
+			"Model-based checkers can never be accurate enough for any purpose",
+			"You are using a measurement instrument as an enforcement mechanism: two seconds on the hot path for every user, and its false positives now block real replies",
+			"On-policy is not a measurable property"
+		],
+		answer: 2,
+		explain: "Evals are out-of-band measurement where a false positive costs you a confusing number. Guardrails are in-request enforcement where latency and false positives hit users directly. The same checker may be an excellent evaluator and an unacceptable guardrail."
+	},
+	{
+		q: "A team writes their grading rubric before launch, then refuses to change it, arguing that changing criteria mid-flight is unscientific. What are they getting wrong?",
+		options: [
+			"Nothing — freezing criteria is best practice",
+			"Criteria drift is a documented reality: some criteria are only discoverable by reading real outputs, so an unrevised pre-launch rubric measures an imagined product",
+			"Rubrics should always be written by a third party",
+			"They should use numeric scales instead of criteria"
+		],
+		answer: 1,
+		explain: "Practitioners were observed refining definitions, adding unforeseen failure modes, and relabeling as they graded. Some criteria are genuinely output-dependent. Freezing a rubric written in ignorance locks in the wrong measurement — though you do need discipline about when the rubric is allowed to change."
+	},
+	{
+		q: "Your eval set of 60 cases has scored 100% for three months across four different model versions. What does that tell you?",
+		options: [
+			"The workflow is in excellent shape",
+			"The set has no discriminating power left — it cannot distinguish the versions, so it cannot detect improvement or regression",
+			"You should add more scorers to the same cases",
+			"The scorers are definitely broken"
+		],
+		answer: 1,
+		explain: "An eval everything passes conveys no information about differences between versions. It may still be worth keeping as a floor against catastrophic regression, but it cannot guide improvement — you need cases that current systems actually fail."
+	},
+]} />
+
+<Sources list={[
+	{ id: 1, author: "He, H. and Thinking Machines Lab", year: 2025, title: "Defeating Nondeterminism in LLM Inference", url: "https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/" },
+	{ id: 2, author: "OpenAI", year: 2025, title: "Reproducible outputs with the seed parameter", url: "https://developers.openai.com/cookbook/examples/reproducible_outputs_with_the_seed_parameter" },
+	{ id: 3, author: "Ma, C., Yang, J. and Kästner, C.", year: 2023, title: "Are Large Language Models Reliable? Analyzing the Impact of Silent LLM API Updates", url: "https://arxiv.org/abs/2311.11123" },
+	{ id: 4, author: "Shankar, S. et al.", year: 2024, title: "Who Validates the Validators? Aligning LLM-Assisted Evaluation of LLM Outputs with Human Preferences", url: "https://arxiv.org/abs/2404.12272" },
+	{ id: 5, author: "British Columbia Civil Resolution Tribunal", year: 2024, title: "Moffatt v. Air Canada, 2024 BCCRT 149", url: "https://www.canlii.org/en/bc/bccrt/doc/2024/2024bccrt149/2024bccrt149.html" },
+	{ id: 6, author: "OpenAI", year: 2025, title: "Expanding on what we missed with sycophancy", url: "https://openai.com/index/expanding-on-sycophancy/" },
+	{ id: 7, author: "Husain, H.", year: 2025, title: "Frequently Asked Questions About LLM Evals", url: "https://hamel.dev/blog/posts/evals-faq/" },
+	{ id: 8, author: "Reuel, A. et al.", year: 2025, title: "Measuring What Matters: Construct Validity in Large Language Model Benchmarks", url: "https://arxiv.org/abs/2511.04703" },
+]} />

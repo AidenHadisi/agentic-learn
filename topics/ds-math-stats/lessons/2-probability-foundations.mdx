@@ -1,223 +1,274 @@
-import { Callout, Quiz, Stepper, Step, Sources } from "@learn/components";
+import { Callout, Quiz, Stepper, Step, Mermaid, Reveal, Sources } from "@learn/components";
 
 # Probability Foundations
 
-Lesson 1 taught you how to *summarize a fixed list of numbers*. Real work is messier: the numbers haven't arrived yet, a test result just came back, or you need a fair price for a risky bet. Probability is the language for that uncertainty — how to update beliefs when evidence arrives, and how to summarize a *chance process* the way you summarized a dataset.
+Descriptive statistics gave you a toolkit for data you already have. You can take a pile of numbers and say what's typical, how much it varies, and which direction it leans. Every one of those tools is backward-looking: it summarizes what already happened.
 
-We'll stay concrete. Counts before formulas. Every identity earns its keep with a worked example.
+But most questions worth asking point forward. Your dashboard says 40% of last quarter's incidents were latency-related — that's a fact about the past. The question you actually care about is "we're deploying in ten minutes, how worried should I be?" That's a question about something that hasn't happened. Probability is the language for those questions, and it's the foundation everything later in this course is built on.
 
-## Events and Conditional Probability
+This chapter builds that language from the ground up. We'll pin down what a probability even is, learn the handful of rules it must obey, and then spend most of our time on the single idea that does the heavy lifting in data science: what happens to a probability when you learn something new.
 
-An **experiment** produces one **outcome** from a **sample space** $S$ (every possibility). An **event** is a subset of $S$ — a collection of outcomes you care about. If you roll a die, $S = \{1,2,3,4,5,6\}$ and "even" is the event $\{2,4,6\}$.
+## The Experiment and the Sample Space
 
-Often you learn something that rules outcomes out. A positive medical test. The word "FREE" in an email. Knowing the first card was a heart. That information doesn't create a new kind of probability — it **restricts the sample space** and **renormalizes** what's left so the remaining mass still sums to 1.
+Before you can talk about how likely something is, you have to be precise about what "everything that could happen" means. That sounds pedantic. It isn't — most probability mistakes in the wild are really mistakes about this step.
 
-$$P(A \mid B) = \frac{P(A \cap B)}{P(B)} \quad (P(B) > 0)$$
+An **experiment** is any process with an uncertain result: rolling a die, shipping a deploy, showing a user a checkout page. The **sample space** is the complete list of possible outcomes of that experiment, written so that exactly one of them will happen. An **event** is any collection of outcomes you care about.
 
-Read it in plain English: *of the probability that lives in $B$, what fraction also lives in $A$?* There is no event called "$A \mid B$". The bar marks *evidence*, not a third set.[¹]
+A useful picture, borrowed from Harvard's probability course, is a tray of pebbles. Each pebble is one outcome. Each pebble has some weight, and the weights of all pebbles add to 1. An event is you scooping up a handful of pebbles, and the probability of that event is the total weight in your hand. Running the experiment is reaching in and drawing one pebble.
+
+The two requirements on that list are that the outcomes **cannot overlap** and that they **cover everything**. For a single die roll, "the result is 1 or 3" and "the result is 1 or 4" cannot both be outcomes — they share the possibility of a 1, so they'd double-count it. The atomic outcomes are 1 through 6, and everything else is built from them.
+
+What the list should contain is a genuine modeling decision, not a fact you look up. For a deploy you might use just two outcomes, succeeded and failed. Or you might need four: succeeded, failed on tests, failed on latency, failed on rollback. Neither is more correct in the abstract. The right granularity is the coarsest one that can still express every question you plan to ask.
+
+<Callout variant="warn" title="The most common setup error">
+Choosing a sample space too coarse to express your question. If your outcomes are only "succeeded" and "failed," you cannot ask anything about *why* it failed — that information was thrown away before you started, and no amount of arithmetic will recover it.
+</Callout>
+
+## Two Ways to Read a Probability
+
+When you say an event has probability 0.30, you could mean one of two quite different things, and it's worth knowing which one you mean.
+
+The **frequency** reading says: if this experiment were repeated over and over under the same conditions, the event would occur about 30% of the time. This is the natural reading for anything genuinely repeatable — cache hit rates, checkout conversion, incidents per deploy. It's also the reading that connects directly to data, because you can estimate it by counting.
+
+The **belief** reading says: 0.30 is how confident I am, and I'd accept a bet at those odds. This is what you mean when you say "there's a 70% chance the latency spike is DNS." That outage happens once. There is no long run to average over. But you still need a number to make a decision with.
+
+Here is the important part: the mathematics is identical either way. Every rule in this chapter applies to both readings without modification. The interpretation changes what the number *means* and how you'd justify it, not how it behaves. Both readings show up constantly in data science work, and the only real mistake is sliding between them mid-argument without noticing.
+
+## The Rules
+
+Probability is a way of spreading a fixed budget of certainty — exactly 1.0 of it — across the outcomes in your sample space. Three rules follow from taking that seriously.
+
+First, **no probability is negative**. Negative weight makes no sense under the pebble picture, and if you'd accept a bet priced on a negative probability you'd be agreeing to lose money for certain.
+
+Second, **the whole sample space has probability 1**. Something on the list will happen. If you doubt that, your list is incomplete, which is a modeling problem rather than an arithmetic one.
+
+Third, **probabilities of non-overlapping events add**. If an incident can't be both Sev-1 and Sev-2, then the chance it's one or the other is just the sum. Non-overlapping piles of weight combine by adding.
+
+Two useful consequences fall straight out. Since an event and its opposite together cover everything and don't overlap, their probabilities sum to 1, so $P(\text{not } A) = 1 - P(A)$. This is the **complement rule**, and it's often the fastest route to an answer: the probability that at least one of five services fails is painful to compute directly but easy as one minus the probability that all five stay up.
+
+The other consequence handles overlap. If two events *can* both happen, adding their probabilities counts the overlap twice, so you subtract it back off:
+
+$$P(A \cup B) = P(A) + P(B) - P(A \cap B)$$
+
+Here $A \cup B$ means "A or B or both" and $A \cap B$ means "both A and B." If 40% of incidents are latency-related and 25% happen during a deploy window, the chance an incident is one or the other is *not* 65% unless those two never co-occur — and as we're about to see, they very much do.
+
+## Reading a Two-Way Table
+
+Almost everything in this chapter becomes concrete the moment you look at a table of counts, so let's build one and stay with it.
+
+Suppose your team logged 200 production incidents last quarter. You classify each one two ways: did it happen during a deploy window, and was it latency-related?
+
+| | Deploy window | Outside deploy window | Total |
+|---|---|---|---|
+| **Latency-related** | 40 | 40 | 80 |
+| **Not latency-related** | 10 | 110 | 120 |
+| **Total** | 50 | 150 | 200 |
+
+Write $L$ for "latency-related" and $D$ for "during a deploy window." This single table holds three different kinds of probability, and the only thing distinguishing them is **which number you divide by**.
+
+A **joint** probability is about two things happening together. It's a cell divided by the grand total. The chance a randomly chosen incident is both latency-related and in a deploy window is
+
+$$P(L \cap D) = \frac{40}{200} = 0.20$$
+
+A **marginal** probability is about one thing, ignoring the other. It's a row or column total divided by the grand total — and it gets its name because you read it off the margins of the table. The chance an incident is latency-related, deploy window or not, is
+
+$$P(L) = \frac{80}{200} = 0.40$$
+
+and similarly $P(D) = 50/200 = 0.25$. Notice what happened to the other variable: you summed across it and it disappeared. That operation is called *marginalizing*, and it's the same move as collapsing a pivot table down to one dimension.
+
+A **conditional** probability is about one thing *given* that you already know the other. This is where the denominator changes. Suppose you know the incident happened during a deploy window. You're no longer choosing from all 200 incidents — you're choosing from the 50 in that column. So
+
+$$P(L \mid D) = \frac{40}{50} = 0.80$$
+
+The notation $P(L \mid D)$ reads "the probability of L given D." Eighty percent of deploy-window incidents are latency problems.
+
+Now flip it. Given that an incident was latency-related, how likely was it to have happened during a deploy? Now your world is the 80 incidents in the latency row:
+
+$$P(D \mid L) = \frac{40}{80} = 0.50$$
+
+<Callout variant="key" title="Same cell, different denominators">
+$P(L \mid D) = 0.80$ and $P(D \mid L) = 0.50$ came from the *same 40 incidents*. They differ only in what population you divided by. Conditional probabilities are not symmetric, and treating them as if they were is probably the single most expensive mistake in applied statistics.
+</Callout>
+
+Say both out loud and the difference is obvious. "Among deploy-window incidents, 80% are latency problems." "Among latency problems, 50% happened during a deploy." Those are clearly different claims about different groups. It's only in symbols that they blur together.
+
+## Conditioning Means Restricting, Then Renormalizing
+
+Now let's name what we just did, because it generalizes past tables of counts.
+
+When you learn that $B$ happened, two things occur. First you **restrict**: every outcome where $B$ didn't happen is off the table, gone, no longer possible. Second you **renormalize**: the surviving outcomes have to carry a total probability of 1 again, so you scale them all up by dividing by however much probability survived.
+
+That's exactly what the definition says:
+
+$$P(A \mid B) = \frac{P(A \cap B)}{P(B)}$$
+
+The numerator is the probability that survived *and* is in $A$. The denominator is all the probability that survived. The division is the renormalization step. It's defined whenever $P(B) > 0$ — you can't condition on something impossible, since there'd be nothing left to renormalize.
+
+Check it against the table. $P(L \cap D) = 0.20$ and $P(D) = 0.25$, so $P(L \mid D) = 0.20 / 0.25 = 0.80$. Same answer as counting within the column, which is reassuring — the formula is just bookkeeping for "count inside the restricted world."
+
+A geometric version helps. Picture all possibilities as a square of area 1. The event $B$ is some region inside it. Learning $B$ happened means erasing everything outside that region and blowing up what's left to fill the whole square again. Areas that were small slivers of the original square can become large fractions of the new one. Nothing about the underlying world changed — only which part of it you're still considering.
+
+<Callout variant="tip" title="Conditional probabilities are ordinary probabilities">
+Once you've restricted to $B$, the function $P(\cdot \mid B)$ obeys every rule from earlier: nothing negative, the restricted world totals 1, non-overlapping events still add. Conditioning gives you a new, smaller probability model — not a different kind of object.
+</Callout>
+
+## Chaining Events Together
+
+Rearranging the definition gives something useful in its own right. Multiply both sides by $P(B)$:
+
+$$P(A \cap B) = P(B) \cdot P(A \mid B)$$
+
+This is the **multiplication rule**, and it's how you compute the probability of a sequence of things all going a particular way. Read it as a story: first $B$ happens, and then, *in the world where $B$ has happened*, $A$ happens too.
+
+Consider a canary release that has to clear three gates in order. Unit tests pass 95% of the time. Given that they passed, the error-rate check passes 90% of the time. Given both of those passed, the latency check passes 85% of the time. What's the chance a release clears all three?
 
 <Stepper>
-<Step>Imagine a fair deck. Draw one card. $P(\text{Ace}) = 4/52 = 1/13$.</Step>
-<Step>Now you're told the card is a **heart**. Throw away the other 39 cards. The restricted world has 13 hearts, including 1 ace.</Step>
-<Step>$P(\text{Ace} \mid \text{Heart}) = 1/13$. Same as unconditional ace probability here — hearts and aces "don't interfere."</Step>
-<Step>Contrast: $P(\text{Heart} \mid \text{Ace}) = 1/4$. Same joint (1 ace of hearts), **different denominator**. Conditioning on aces vs conditioning on hearts are different worlds.</Step>
+<Step>Chance of clearing gate 1: $P(G_1) = 0.95$</Step>
+<Step>Given gate 1 cleared, chance of clearing gate 2: $P(G_2 \mid G_1) = 0.90$. So the chance of clearing both is $0.95 \times 0.90 = 0.855$</Step>
+<Step>Given both cleared, chance of clearing gate 3: $P(G_3 \mid G_1 \cap G_2) = 0.85$. Multiply again: $0.855 \times 0.85 = 0.727$</Step>
 </Stepper>
 
-That last contrast is the whole game. $P(A \mid B)$ and $P(B \mid A)$ share a numerator but divide by different totals. Swapping them is the **prosecutor's fallacy** — treating "how likely is this evidence if guilty?" as "how likely is guilt given this evidence?"
+So a bit under 73% of releases make it through cleanly, even though every individual gate looks reassuringly high. Multiplying numbers below 1 erodes them fast, which is worth internalizing: a pipeline of individually reliable steps is much less reliable than any of its steps.
 
-Rearranging the definition gives the **multiplication rule**:
+Notice that each factor after the first is a *conditional* probability, given everything before it. That's what makes this correct even when the gates influence each other. A release that barely squeaked past the error-rate check probably isn't a healthy release, and its latency check is likelier to fail too. The conditional factors absorb that.
 
-$$P(A \cap B) = P(A \mid B)\, P(B)$$
+## Independence Is Not the Same as "Can't Both Happen"
 
-Story: probability of both = probability of the condition × probability of the other *given* the condition.
+Sometimes learning $B$ tells you nothing at all about $A$. When that happens we say $A$ and $B$ are **independent**, and it means precisely this:
 
-### Independence
+$$P(A \mid B) = P(A)$$
 
-Two events are **independent** when learning one doesn't change the probability of the other:
+Conditioning didn't move the number. Restricting the world to $B$ left $A$'s share of it unchanged. Feed that into the multiplication rule and you get the more familiar form:
 
-$$P(A \mid B) = P(A) \quad \Leftrightarrow \quad P(A \cap B) = P(A)P(B)$$
+$$P(A \cap B) = P(A) \cdot P(B)$$
 
-Independence is *not* "can't happen together." That is **mutually exclusive** ($A \cap B = \emptyset$). If two events with positive probability are mutually exclusive, knowing one occurred *forces* the other to probability 0 — they are dependent.
+You are only allowed to multiply plain, unconditional probabilities when the events are independent. That's the whole content of the rule.
 
-<Callout variant="key" title="Conditioning is restriction">
-$P(A \mid B)$ means: discard everything outside $B$, then ask what fraction of the survivors is in $A$. Always ask "restricted to *which* world?" before you compute.
-</Callout>
+Test it on our incident table. If $L$ and $D$ were independent, the joint probability would have to be $P(L) \times P(D) = 0.40 \times 0.25 = 0.10$. The actual joint probability is 0.20 — twice as large. So they're dependent, and in the direction you'd expect: deploys make latency incidents more likely, not less.
 
-## Bayes' Theorem
+Now the confusion this section exists to prevent. Two events are **mutually exclusive** (or disjoint) when they cannot both happen — an incident can't be both Sev-1 and Sev-2. Students routinely treat "mutually exclusive" and "independent" as roughly the same idea, or as opposites on some single scale. They are neither.
 
-Bayes is not a new law of nature. It is the definition of conditional probability, flipped to answer the question you actually care about.
+<Reveal prompt="If two events are mutually exclusive, are they independent?">
+Almost never. Suppose $A$ and $B$ are mutually exclusive and both have nonzero probability. If you learn that $A$ happened, then $B$ definitely did *not* happen, so $P(B \mid A) = 0$. But $P(B)$ was some positive number. Conditioning changed it dramatically — from positive all the way to zero. That's the *opposite* of independence. Mutually exclusive events are maximally dependent: each one, if it occurs, completely rules the other out.
+</Reveal>
 
-You often know $P(\text{evidence} \mid \text{hypothesis})$ — how a test behaves *if* someone is sick, how a word behaves *if* an email is spam. You want $P(\text{hypothesis} \mid \text{evidence})$. Same joint, different denominator:
+The clean way to keep them apart is to notice they answer different questions. Mutual exclusivity is about whether the events can **co-occur** — it's a structural fact about the sample space, and it's what licenses you to add probabilities. Independence is about whether one event carries **information** about the other, and it's what licenses you to multiply them. A coin flip and a die roll are independent and can absolutely both happen. Sev-1 and Sev-2 can't both happen and are wildly dependent.
 
-$$P(H \mid E) = \frac{P(E \mid H)\, P(H)}{P(E)}$$
+## Breaking a Problem into Cases
 
-$P(H)$ is the **prior** (base rate). $P(E \mid H)$ is the **likelihood**. $P(H \mid E)$ is the **posterior**. The denominator $P(E)$ accounts for *every* way the evidence can arise — including false alarms.[²]
+The last tool in this chapter handles a very common situation: you can't easily compute how often something happens overall, but you *can* compute how often it happens within each of several groups.
 
-Formulas alone hide the trap. Work in **natural frequencies** — counts from one population that keep the base rate intact.[³]
+Say support tickets arrive through three channels. Half come from chat, 30% from email, 20% from phone. Escalation rates differ by channel: 10% of chat tickets get escalated, 25% of email tickets, and 40% of phone tickets. What fraction of all tickets get escalated?
 
-### Worked example: a screening test
+The trick that makes this easy — and it's a trick worth using constantly — is to stop working in percentages and imagine a concrete population instead. Take 1,000 tickets and follow them through.
 
-Disease prevalence is 1%. The test is 99% sensitive ($P(+ \mid \text{disease}) = 0.99$) with a 5% false-positive rate ($P(+ \mid \text{healthy}) = 0.05$). You test positive. What's $P(\text{disease} \mid +)$?
-
-Most people's gut says "about 95%" or "99%." Let's count.
+<Mermaid chart={`flowchart LR
+  R[1000 tickets] --> C[Chat: 500]
+  R --> E[Email: 300]
+  R --> P[Phone: 200]
+  C --> C1[Escalated: 50]
+  C --> C2[Not escalated: 450]
+  E --> E1[Escalated: 75]
+  E --> E2[Not escalated: 225]
+  P --> P1[Escalated: 80]
+  P --> P2[Not escalated: 120]
+`} />
 
 <Stepper>
-<Step>Imagine **10,000** people. Diseased: $1\%$ → **100**. Healthy: **9,900**.</Step>
-<Step>Of 100 diseased: $99\%$ test + → **99** true positives.</Step>
-<Step>Of 9,900 healthy: $5\%$ test + → **495** false positives.</Step>
-<Step>Total positives: $99 + 495 = 594$. Of those, only 99 are sick.</Step>
-<Step>$P(\text{disease} \mid +) = 99/594 \approx 0.167$ — about **17%**, not 99%.</Step>
+<Step>Split 1,000 tickets by channel: 500 chat, 300 email, 200 phone</Step>
+<Step>Apply each channel's escalation rate: $500 \times 0.10 = 50$, $300 \times 0.25 = 75$, $200 \times 0.40 = 80$</Step>
+<Step>Total escalated: $50 + 75 + 80 = 205$, so $P(\text{escalated}) = 205/1000 = 0.205$</Step>
 </Stepper>
 
-Why so low? Almost everyone is healthy, so even a small false-positive rate produces a *crowd* of healthy positives that swamp the true cases. The test accuracy numbers $P(+ \mid \text{disease})$ and $P(+ \mid \text{healthy})$ are *not* what a positive patient needs. They need the posterior, which mixes those numbers with prevalence.
+About 20.5% of tickets get escalated. Written in symbols, what you just did is the **law of total probability**:
 
-Same arithmetic as Bayes:
+$$P(E) = P(E \mid C)P(C) + P(E \mid M)P(M) + P(E \mid H)P(H)$$
 
-$$P(\text{disease} \mid +) = \frac{0.99 \times 0.01}{0.99 \times 0.01 + 0.05 \times 0.99} = \frac{0.0099}{0.0594} \approx 0.167$$
+with $C$, $M$, and $H$ for chat, email, and phone. Each term is one path down the tree: the chance of landing in that group, times the chance of escalating once you're there. Add up every path that ends in escalation.
 
-<Callout variant="warn" title="Base-rate fallacy">
-Ignoring prevalence and equating "test accuracy" with "chance I have it" is one of the most reliable errors in human reasoning — clinicians make it too.[⁴] Always ask: *of the people who look like this, what fraction actually are?*
+The requirement is that your groups form a **partition** — every ticket belongs to exactly one channel, and the channels cover all tickets. That's the same no-overlap-and-cover-everything condition we needed for the sample space, applied one level down.
+
+It's worth seeing this for what it is: a weighted average. The overall escalation rate of 20.5% sits between the lowest channel rate (10%) and the highest (40%), pulled toward chat because chat has the most volume. Any time you've computed an overall rate from segment rates weighted by segment size, you've used this law without naming it.
+
+<Callout variant="key" title="Why the count version is easier">
+The 1,000-ticket walkthrough and the formula are the same arithmetic. But almost everyone finds the counts easier, because the group sizes stay visible the whole way through. In percentage form it's easy to lose track of the fact that chat is a much bigger group than phone. Whenever a probability problem feels slippery, try re-imagining it as a concrete population of 1,000 and counting.
 </Callout>
 
-### Bayes in data science (conceptually)
+## Putting It Together
 
-A classifier is the same move. For each class $c$, score $P(c) \times P(\text{features} \mid c)$, then normalize across classes to get $P(c \mid \text{features})$. Class frequencies in training are priors; rare classes (fraud, defects, rare diseases) are base-rate problems wearing different clothes. High recall on a rare class still yields low precision unless false positives are tiny.
+Everything in this chapter came from one idea: probability is a fixed budget of 1.0 spread over a well-specified list of possibilities. The rules about adding, complementing, and overlapping are just careful bookkeeping on that budget.
 
-## Random Variables, Expectation, and Variance
+The part that will keep paying off is conditioning. Learning something new means throwing away the possibilities that are now ruled out and rescaling what remains, which is why the denominator in a conditional probability is the conditioning event rather than the whole world. Everything else followed from that: the multiplication rule is conditioning rearranged, independence is the special case where conditioning changes nothing, and the law of total probability is what you get by conditioning on each of several cases and adding the results back up.
 
-Conditional probability updates *events*. Often the outcome you care about is a **number**: dollars won, number of clicks, latency in ms. A **random variable** $X$ assigns a number to each outcome.
-
-For a discrete $X$, the **probability mass function** (PMF) $p(x) = P(X = x)$ is the distribution's histogram with bar heights equal to probabilities — the same role frequencies $1/n$ played for a fixed dataset.
-
-### Expected value
-
-The **expected value** reweights each possible value by its probability:
-
-$$E[X] = \sum_x x\, P(X = x)$$
-
-This is the balance point of the PMF — the same "center of mass" idea as the mean, but the weights are probabilities instead of $1/n$.[⁵] It is a property of the *chance process*, not of one sample. It need not be a value $X$ can actually take.
-
-**Fair die.** $X \in \{1,2,3,4,5,6\}$, each with probability $1/6$:
-
-$$E[X] = \frac{1+2+3+4+5+6}{6} = 3.5$$
-
-Never lands on 3.5. Expectation is not "the most likely value" (that's the mode) and not "what usually happens."
-
-**Fair game intuition.** If $G$ is your net gain from a bet, the game is **fair** when $E[G] = 0$. Casinos set payouts so $E[G] < 0$ for the player. Expectation is the long-run average stake — not a promise about the next roll.
-
-### Variance of a random variable
-
-Spread for a random variable mirrors population variance from Lesson 1, with a known center $\mu = E[X]$:
-
-$$\mathrm{Var}(X) = E[(X - \mu)^2] = E[X^2] - \mu^2$$
-
-Standard deviation $\mathrm{SD}(X) = \sqrt{\mathrm{Var}(X)}$ restores the original units. The computational form $E[X^2] - (E[X])^2$ is usually easier — and it reminds you that $E[X^2] \neq (E[X])^2$ unless the variance is zero.
-
-Continuing the die:
-
-$$E[X^2] = \frac{1+4+9+16+25+36}{6} = \frac{91}{6}$$
-
-$$\mathrm{Var}(X) = \frac{91}{6} - \left(\frac{7}{2}\right)^2 = \frac{35}{12} \approx 2.92, \quad \mathrm{SD}(X) \approx 1.71$$
-
-| Fixed dataset (Lesson 1) | Random variable (now) |
-|--------------------------|------------------------|
-| $\bar{x} = \frac{1}{n}\sum x_i$ | $E[X] = \sum x\, P(X=x)$ |
-| $s^2$ uses $n-1$ because $\bar{x}$ is estimated | $\mathrm{Var}(X)$ uses known $\mu = E[X]$ |
-| Summarizes *your sample* | Summarizes the *chance process* |
-
-### Linearity of expectation
-
-The most useful property in applied probability:
-
-$$E[X + Y] = E[X] + E[Y]$$
-
-always — **even when $X$ and $Y$ are dependent**. Independence is *not* required. (Contrast: variances add only under independence / zero correlation. $Y = -X$ makes $X+Y$ constant, so $\mathrm{Var}(X+Y) = 0$, not $2\,\mathrm{Var}(X)$.)
-
-**Indicator trick.** Let $I = 1$ if event $A$ occurs and $0$ otherwise. Then $E[I] = P(A)$. Counting becomes summing indicators; expectation becomes summing probabilities.
-
-**Matching hats.** $n$ people get randomly shuffled hats. Let $X$ be the number who get their own hat. The distribution of $X$ is messy, but write $X = I_1 + \cdots + I_n$ where $I_j = 1$ if person $j$ matches. Person $j$'s hat is equally likely to be any of the $n$, so $E[I_j] = 1/n$. The $I_j$ are *dependent* (if $n-1$ match, the last must), yet:
-
-$$E[X] = \sum_{j=1}^{n} E[I_j] = n \cdot \frac{1}{n} = 1$$
-
-for every $n \ge 1$. Brute force for $n=3$ (six permutations) also averages to 1 — linearity gives the same answer without listing anything.[⁶]
-
-<Callout variant="tip" title="Bridge from Lesson 1">
-Descriptive stats: reweight each *observed* number by $1/n$. Expectation: reweight each *possible* number by its probability. Same balance-point intuition; different weights.
-</Callout>
-
-## Closing
-
-You now have two moves that cover most of probabilistic reasoning in data work:
-
-1. **Condition and renormalize** — evidence restricts the world; Bayes flips likelihoods into posteriors and refuses to ignore base rates.
-2. **Summarize the chance process** — $E[X]$ and $\mathrm{Var}(X)$ are the mean and variance of a distribution, with linearity of expectation as a workhorse that survives dependence.
-
-Next we'll meet the named distributions that arise over and over — not as a zoo to memorize, but as generative stories with fingerprints you'll recognize in data.
+Carry one thing forward above all: $P(A \mid B)$ and $P(B \mid A)$ are different numbers. Our incident table put them at 0.80 and 0.50. Keeping those straight — always asking "given what? among which group?" — is most of what separates careful probabilistic reasoning from the confident, wrong kind.
 
 ## Practice
 
-1. A factory produces 2% defective parts. An inspector flags defectives 95% of the time and falsely flags good parts 3% of the time. A part is flagged. Using a population of 10,000, estimate $P(\text{defective} \mid \text{flagged})$. Then write the same answer with Bayes' formula.
+1. Using the incident table from this chapter, compute $P(\text{not } L \mid D)$ and $P(D \mid \text{not } L)$. Check that $P(L \mid D) + P(\text{not } L \mid D) = 1$, and then explain in a sentence why that had to be true while $P(L \mid D) + P(L \mid \text{not } D)$ has no reason to equal anything in particular.
 
-2. A fair coin is flipped 3 times. Let $X$ be the number of heads. List the PMF of $X$, then compute $E[X]$ and $\mathrm{Var}(X)$ two ways: (a) from the definition, (b) by writing $X = I_1+I_2+I_3$ and using linearity (for the mean) plus independence of the flips (for the variance).
+2. In the support ticket example, 205 of 1,000 tickets were escalated. Of those escalated tickets, what fraction came in by phone? Compare your answer to the 40% escalation rate for phone tickets, and explain in words why the two numbers are different and what each one is actually saying.
 
-3. Explain, without formulas, why $P(\text{spam} \mid \text{"FREE"})$ can be high in one inbox and low in another even when $P(\text{"FREE"} \mid \text{spam})$ is identical. What changed?
+3. A service depends on four independent downstream services, each of which is up 99% of the time. What's the probability all four are up simultaneously? What's the probability at least one is down? Now suppose the four are *not* independent because they share a database — would the true probability that all four are up be higher or lower than your answer? Reason it out rather than computing.
 
-4. True or false, and why: "If $E[X] = 0$, then $X$ is usually near 0." What quantity would make the claim more precise?
+4. Give an example from your own work of two events that are mutually exclusive, and a separate example of two events that are independent. Then explain why your mutually exclusive pair is strongly dependent.
+
+5. A colleague reports "70% of our outages happen on days when we deploy." Your manager concludes deploys are dangerous and proposes deploying less often. What further number would you need before you could evaluate that conclusion, and why is the 70% figure alone not enough?
 
 <Quiz questions={[
 	{
-		q: "A disease has prevalence 0.1%. A test is 100% sensitive with a 1% false-positive rate. You test positive. Roughly what is P(disease | +)?",
-		options: [
-			"About 99%",
-			"About 90%",
-			"About 9%",
-			"About 1%"
-		],
-		answer: "About 9%",
-		explain: "Out of 10,000 people: ~10 sick (all test +) and ~9,990 healthy with ~100 false +. Posterior ≈ 10/110 ≈ 9%. Accuracy ≠ posterior."
+		q: "A dataset of 500 users shows 100 are on mobile, and 30 of those mobile users converted. Overall, 90 users converted. What is P(converted | mobile)?",
+		options: ["30/500 = 0.06", "30/100 = 0.30", "30/90 ≈ 0.33", "90/500 = 0.18"],
+		answer: "30/100 = 0.30",
+		explain: "Conditioning on 'mobile' restricts the world to the 100 mobile users, so that becomes the denominator. 30/500 is the joint probability, 30/90 is P(mobile | converted), and 90/500 is the marginal conversion rate."
 	},
 	{
-		q: "Which statement correctly describes independence of events A and B?",
+		q: "Events A and B are mutually exclusive, and both have probability greater than zero. What can you conclude about independence?",
 		options: [
-			"A and B cannot occur together",
-			"P(A ∩ B) = 0",
-			"P(A | B) = P(A) — learning B doesn't change the probability of A",
-			"P(A | B) = P(B | A)"
+			"They are definitely NOT independent, because learning A occurred forces P(B) down to zero",
+			"They are definitely independent, since neither affects the other",
+			"They are independent only if P(A) equals P(B)",
+			"There is not enough information to say"
 		],
-		answer: "P(A | B) = P(A) — learning B doesn't change the probability of A",
-		explain: "Independence means conditioning doesn't move the probability. Mutually exclusive (can't occur together) is a different idea and usually implies dependence."
+		answer: "They are definitely NOT independent, because learning A occurred forces P(B) down to zero",
+		explain: "Mutual exclusivity is the strongest possible form of dependence. If A happening rules B out entirely, then P(B | A) = 0 while P(B) > 0, so conditioning changed the probability — the definition of dependence."
 	},
 	{
-		q: "For a fair six-sided die, E[X] = 3.5. Why is that not a contradiction?",
+		q: "A fraud detector flags 3% of legitimate transactions and 85% of fraudulent ones. Fraud accounts for 1% of all transactions. Which quantity does the law of total probability let you compute directly?",
 		options: [
-			"The die is unfair in the long run",
-			"Expectation is a weighted average (center of mass), not a value X must take",
-			"You should use the median instead, which is also 3.5",
-			"E[X] is only defined for continuous random variables"
+			"The overall fraction of transactions that get flagged",
+			"The probability a flagged transaction is fraudulent",
+			"Whether flagging and fraud are independent",
+			"The false negative rate of the detector"
 		],
-		answer: "Expectation is a weighted average (center of mass), not a value X must take",
-		explain: "E[X] balances probability mass on the number line. It need not be a possible outcome — same idea as a mean of 2.4 children."
+		answer: "The overall fraction of transactions that get flagged",
+		explain: "Splitting into the fraud and legitimate cases and weighting by how common each is gives P(flagged) = 0.85(0.01) + 0.03(0.99) = 0.0382. That is the law of total probability. Getting from there to P(fraud | flagged) requires reversing the conditional, which is a separate step."
 	},
 	{
-		q: "n hats are randomly permuted. X = number of people who get their own hat. The indicators I_j (person j matches) are dependent. What is E[X]?",
+		q: "Three sequential deployment gates have pass rates of 0.90, 0.80, and 0.70, where each rate is conditional on all previous gates having passed. What is the probability a release clears all three?",
+		options: ["0.504", "0.80", "2.40", "0.70"],
+		answer: "0.504",
+		explain: "The multiplication rule chains the conditional probabilities: 0.90 × 0.80 × 0.70 = 0.504. Just over half of releases clear all three gates, even though every individual gate passes most of the time."
+	},
+	{
+		q: "Among visitors to a checkout page, 20% use a coupon and 35% complete a purchase. If 7% do both, are 'uses coupon' and 'completes purchase' independent?",
 		options: [
-			"0, because dependence cancels the mean",
-			"1, by linearity: each E[I_j] = 1/n, and linearity does not need independence",
-			"n/2",
-			"Impossible to compute without the full PMF of X"
+			"Yes — 0.20 × 0.35 = 0.07, exactly the observed joint probability",
+			"No — the joint probability is far higher than the product",
+			"No — the two events are mutually exclusive",
+			"Cannot be determined without the total number of visitors"
 		],
-		answer: "1, by linearity: each E[I_j] = 1/n, and linearity does not need independence",
-		explain: "E[X] = Σ E[I_j] = n·(1/n) = 1 for every n. Dependence blocks multiplying probabilities and adding variances — not adding expectations."
+		answer: "Yes — 0.20 × 0.35 = 0.07, exactly the observed joint probability",
+		explain: "Independence means the joint probability equals the product of the marginals. Here 0.20 × 0.35 = 0.07, which matches, so knowing someone used a coupon tells you nothing about whether they purchased."
 	}
 ]} />
 
 <Sources list={[
-	{ author: "Blitzstein & Hwang", year: "2019", title: "Introduction to Probability — Conditioning and Bayes", url: "https://drive.google.com/file/d/1VmkAAG8BOOt79DxIhm8zDYxkTVOAT9fW/view" },
-	{ author: "Gigerenzer & Hoffrage", year: "1995", title: "How to Improve Bayesian Reasoning Without Instruction: Frequency Formats", url: "https://library.mpib-berlin.mpg.de/ft/gg/GG_How_1995.pdf" },
-	{ author: "Gigerenzer, G.", year: "2011", title: "What Are Natural Frequencies?", url: "https://doi.org/10.1136/bmj.d6386" },
-	{ author: "Casscells, Schoenberger & Graboys", year: "1978", title: "Interpretation by Physicians of Clinical Laboratory Results", url: "https://doi.org/10.1056/NEJM197811022991808" },
-	{ author: "Sun, D.", year: "2024", title: "Expected Value (center of mass)", url: "https://dlsun.github.io/probability/expected-value.html" },
-	{ author: "MIT OCW 6.042J", year: "2005", title: "Linearity of Expectation / Hat Check", url: "https://ocw.mit.edu/courses/6-042j-mathematics-for-computer-science-fall-2005/6ad0342f836f80c219470870db432c18_ln14.pdf" },
-	{ author: "OpenIntro", year: "2024", title: "Introduction to Modern Statistics — Probability", url: "https://openintro-ims.netlify.app/" },
-	{ author: "Brownlee, J.", year: "2019", title: "A Gentle Introduction to Bayes Theorem for Machine Learning", url: "https://machinelearningmastery.com/bayes-theorem-for-machine-learning/" }
+	{ author: "Blitzstein, J. & Hwang, J.", year: "2019", title: "Introduction to Probability, 2nd ed. (Harvard Stat 110)", url: "https://probabilitybook.net/" },
+	{ author: "Bertsekas, D. & Tsitsiklis, J.", year: "2008", title: "Introduction to Probability, Chapter 1", url: "http://athenasc.com/Prob-2nd-Ch1.pdf" },
+	{ author: "MIT OpenCourseWare", year: "2010", title: "6.041 Probabilistic Systems Analysis, Lecture 1: Probability Models and Axioms", url: "https://ocw.mit.edu/courses/6-041-probabilistic-systems-analysis-and-applied-probability-fall-2010/fee036e2e13527166fb7f8bcd0647844_MIT6_041F10_L01.pdf" },
+	{ author: "Powell, V.", year: "2015", title: "Conditional Probability, Explained Visually", url: "https://setosa.io/ev/conditional-probability/" },
+	{ author: "Kunin, D. et al.", year: "2018", title: "Seeing Theory — Compound Probability", url: "https://seeing-theory.brown.edu/compound-probability/index.html" },
+	{ author: "Diez, D., Çetinkaya-Rundel, M. & Barr, C.", year: "2019", title: "OpenIntro Statistics — Conditional Probability", url: "https://stats.libretexts.org/Bookshelves/Introductory_Statistics/OpenIntro_Statistics_(Diez_et_al)./02%3A_Probability/2.02%3A_Conditional_Probability_I" },
+	{ author: "Frost, J.", year: "2023", title: "Using Contingency Tables to Calculate Probabilities", url: "https://statisticsbyjim.com/probability/contingency-tables-probabilities/" },
+	{ author: "Rossman, A.", year: "2008", title: "Independence and Mutual Exclusivity as Distinct Tools", url: "https://doi.org/10.1080/10691898.2008.11889578" }
 ]} />

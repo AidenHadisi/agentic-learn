@@ -1,8 +1,8 @@
-import { Callout, Quiz, Stepper, Step, Reveal, Ordering, Tabs, Tab, Mermaid, Chart, CodeBlock } from "@learn/components";
+import { Meta, Callout, Quiz, Stepper, Step, Reveal, Tabs, Tab, Mermaid, Chart, CodeBlock, Sources } from "@learn/components";
 
 # Public Data Sources & Signals
 
-<div className="lesson-meta">Survey the free and cheap inputs you can actually feed into a traffic estimation model.</div>
+<Meta>Survey the free and cheap inputs you can actually feed into a traffic estimation model.</Meta>
 
 You don't need a clickstream panel to estimate traffic. You need **features that correlate with traffic** and **labels to train against**. This section covers every useful public data source — what it actually tells you, how to access it, and where it breaks down.
 
@@ -311,20 +311,19 @@ Google Trends correlates with **brand awareness**, not site traffic. SparkToro f
 
 Here's the practical priority stack for building your feature set:
 
-<Ordering
-	items={[
-		{ id: "crux", label: "CrUX rank bucket (BigQuery) — closest proxy to real visits" },
-		{ id: "seo", label: "DataForSEO organic ETV — quantitative organic estimate" },
-		{ id: "tranco", label: "Tranco rank — stable consensus popularity" },
-		{ id: "adstxt", label: "ads.txt features — monetization classifier" },
-		{ id: "opr", label: "Open PageRank — free link authority" },
-		{ id: "radar", label: "Cloudflare Radar — geo popularity signal" },
-		{ id: "age", label: "Domain age via RDAP — maturity feature" },
-	]}
-	correct={["crux", "seo", "tranco", "adstxt", "opr", "radar", "age"]}
-	success="This is the recommended priority order — start with the highest-signal free sources, add paid/supplementary features as needed."
-	retry="Think about which sources provide the strongest signal for estimating web traffic volume."
-/>
+<Stepper>
+	<Step>CrUX rank bucket (BigQuery) — closest proxy to real visits</Step>
+	<Step>DataForSEO organic ETV — quantitative organic estimate</Step>
+	<Step>Tranco rank — stable consensus popularity</Step>
+	<Step>ads.txt features — monetization classifier</Step>
+	<Step>Open PageRank — free link authority</Step>
+	<Step>Cloudflare Radar — geo popularity signal</Step>
+	<Step>Domain age via RDAP — maturity feature</Step>
+</Stepper>
+
+<Callout variant="tip">
+This is the recommended priority order — start with the highest-signal free sources, add paid/supplementary features as needed.
+</Callout>
 
 **Cost to cover 1M domains monthly:**
 
@@ -414,13 +413,13 @@ Compare that to SimilarWeb enterprise at $12,000-50,000+/year.
 	},
 ]} />
 
-## References
-
-- [Chrome UX Report documentation](https://developer.chrome.com/docs/crux)
-- [CrUX BigQuery — experimental.popularity.rank](https://developer.chrome.com/docs/crux/bigquery)
-- [Tranco — A Research-Oriented Top Sites Ranking](https://tranco-list.eu/)
-- [Cloudflare Radar Domain Rankings](https://developers.cloudflare.com/radar/investigate/domain-ranking-datasets/)
-- [DataForSEO API documentation](https://docs.dataforseo.com/)
-- [Open PageRank API](https://openpagerank.keywordseverywhere.com/)
-- [IAB ads.txt specification](https://iabtechlab.com/ads-txt/)
-- [Ruth et al. 2022 — Toppling Top Lists (IMC)](https://kcruth.com/papers/2022-Toplists.pdf)
+<Sources list={[
+	{ title: "Chrome UX Report documentation", url: "https://developer.chrome.com/docs/crux" },
+	{ author: "CrUX BigQuery", title: "experimental.popularity.rank", url: "https://developer.chrome.com/docs/crux/bigquery" },
+	{ author: "Tranco", title: "A Research-Oriented Top Sites Ranking", url: "https://tranco-list.eu/" },
+	{ title: "Cloudflare Radar Domain Rankings", url: "https://developers.cloudflare.com/radar/investigate/domain-ranking-datasets/" },
+	{ title: "DataForSEO API documentation", url: "https://docs.dataforseo.com/" },
+	{ title: "Open PageRank API", url: "https://openpagerank.keywordseverywhere.com/" },
+	{ title: "IAB ads.txt specification", url: "https://iabtechlab.com/ads-txt/" },
+	{ author: "Ruth et al.", year: "2022", title: "Toppling Top Lists (IMC)", url: "https://kcruth.com/papers/2022-Toplists.pdf" },
+]} />

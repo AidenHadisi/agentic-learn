@@ -1,8 +1,8 @@
-import { Callout, Quiz, Stepper, Step, Reveal, Ordering, Tabs, Tab, Mermaid, Chart, CodeBlock } from "@learn/components";
+import { Meta, Callout, Quiz, Stepper, Step, Reveal, Tabs, Tab, Mermaid, Chart, CodeBlock, Sources } from "@learn/components";
 
 # Feature Engineering
 
-<div className="lesson-meta">Turn raw data sources into a feature vector you can feed into a model.</div>
+<Meta>Turn raw data sources into a feature vector you can feed into a model.</Meta>
 
 You know what data sources exist. Now the question is: how do you turn "a CrUX rank bucket" and "an ads.txt file" into numbers a model can learn from? This section covers the feature vector design, transformations, the domain-matching problem, and the collection pipeline.
 
@@ -276,19 +276,18 @@ def fetch_with_backoff(url, session, max_retries=3, timeout=10):
 
 Based on the research and published analyses, here's the expected feature importance hierarchy:
 
-<Ordering
-	items={[
-		{ id: "crux", label: "CrUX log-rank + in-flag — closest to real browsing" },
-		{ id: "etv", label: "DataForSEO log(etv) + keyword count — quantitative organic estimate" },
-		{ id: "tranco", label: "Tranco log-rank — stable consensus confirmation" },
-		{ id: "opr", label: "Open PageRank score + referring domains — authority signal" },
-		{ id: "ads", label: "ads.txt features — publisher classification" },
-		{ id: "age", label: "Domain age — maturity / cold-start signal" },
-	]}
-	correct={["crux", "etv", "tranco", "opr", "ads", "age"]}
-	success="This matches the expected importance order. CrUX and ETV carry the most weight; the rest are supporting features."
-	retry="Think about which features are closest to actually measuring traffic vs. measuring something else (links, monetization, age)."
-/>
+<Stepper>
+	<Step>CrUX log-rank + in-flag — closest to real browsing</Step>
+	<Step>DataForSEO log(etv) + keyword count — quantitative organic estimate</Step>
+	<Step>Tranco log-rank — stable consensus confirmation</Step>
+	<Step>Open PageRank score + referring domains — authority signal</Step>
+	<Step>ads.txt features — publisher classification</Step>
+	<Step>Domain age — maturity / cold-start signal</Step>
+</Stepper>
+
+<Callout variant="tip">
+This matches the expected importance order. CrUX and ETV carry the most weight; the rest are supporting features.
+</Callout>
 
 ### Multicollinearity between rank features
 
@@ -410,11 +409,11 @@ Watch for overfitting on rare features. Binary flags like "has SSP X" might only
 	},
 ]} />
 
-## References
-
-- [CrUX rank magnitude — Chrome for Developers](https://developer.chrome.com/blog/crux-rank-magnitude)
-- [CrUX ranking to pageviews — power law fit](https://thib.me/crux-ranking-to-pageviews)
-- [tldextract — Python library](https://github.com/john-kurkowski/tldextract)
-- [Public Suffix List](https://publicsuffix.org/learn/)
-- [Tranco methodology](https://tranco-list.eu/methodology)
-- [DataForSEO — How ETV is calculated](https://dataforseo.com/help-center/how-is-etv-calculated)
+<Sources list={[
+	{ author: "CrUX rank magnitude", title: "Chrome for Developers", url: "https://developer.chrome.com/blog/crux-rank-magnitude" },
+	{ author: "CrUX ranking to pageviews", title: "power law fit", url: "https://thib.me/crux-ranking-to-pageviews" },
+	{ author: "tldextract", title: "Python library", url: "https://github.com/john-kurkowski/tldextract" },
+	{ title: "Public Suffix List", url: "https://publicsuffix.org/learn/" },
+	{ title: "Tranco methodology", url: "https://tranco-list.eu/methodology" },
+	{ author: "DataForSEO", title: "How ETV is calculated", url: "https://dataforseo.com/help-center/how-is-etv-calculated" },
+]} />

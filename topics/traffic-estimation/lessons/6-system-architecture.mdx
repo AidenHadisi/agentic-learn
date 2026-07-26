@@ -1,8 +1,8 @@
-import { Callout, Quiz, Stepper, Step, Tabs, Tab, Mermaid, CodeBlock } from "@learn/components";
+import { Meta, Callout, Quiz, Stepper, Step, Tabs, Tab, Mermaid, CodeBlock, Sources } from "@learn/components";
 
 # System Architecture & API
 
-<div className="lesson-meta">Design the end-to-end pipeline from data collection to internal API.</div>
+<Meta>Design the end-to-end pipeline from data collection to internal API.</Meta>
 
 You have models that estimate visits, geo, and channel mix. Now you need to turn them into a system that a team can actually query. The guiding principle: **batch-score everything into Postgres, serve lookups from a thin API**. Traffic estimates are monthly products — you don't need real-time inference.
 
@@ -425,11 +425,11 @@ For 10-100 internal users querying precomputed estimates from Postgres, a single
 	},
 ]} />
 
-## References
-
-- [SimilarWeb REST API vs Batch API](https://developer.similarweb.com/)
-- [Semrush Traffic Analytics API](https://developer.semrush.com/api/v3/ta/)
-- [FastAPI documentation](https://fastapi.tiangolo.com/)
-- [LightGBM model serialization](https://lightgbm.readthedocs.io/en/latest/Python-API.html)
-- [Evidently — ML monitoring](https://www.evidentlyai.com/)
-- [Prefect — workflow orchestration](https://www.prefect.io/)
+<Sources list={[
+	{ title: "SimilarWeb REST API vs Batch API", url: "https://developer.similarweb.com/" },
+	{ title: "Semrush Traffic Analytics API", url: "https://developer.semrush.com/api/v3/ta/" },
+	{ title: "FastAPI documentation", url: "https://fastapi.tiangolo.com/" },
+	{ title: "LightGBM model serialization", url: "https://lightgbm.readthedocs.io/en/latest/Python-API.html" },
+	{ author: "Evidently", title: "ML monitoring", url: "https://www.evidentlyai.com/" },
+	{ author: "Prefect", title: "workflow orchestration", url: "https://www.prefect.io/" },
+]} />

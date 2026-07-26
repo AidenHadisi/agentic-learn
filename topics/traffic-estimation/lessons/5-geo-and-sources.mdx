@@ -1,8 +1,8 @@
-import { Callout, Quiz, Stepper, Step, Reveal, Tabs, Tab, Mermaid, Chart, CodeBlock } from "@learn/components";
+import { Meta, Callout, Quiz, Stepper, Step, Reveal, Tabs, Tab, Mermaid, Chart, CodeBlock, Sources } from "@learn/components";
 
 # Geo & Traffic Source Estimation
 
-<div className="lesson-meta">Model country-level traffic distributions and channel mix as separate prediction heads.</div>
+<Meta>Model country-level traffic distributions and channel mix as separate prediction heads.</Meta>
 
 You can predict total monthly visits. Now you need to break that number down: **which countries** does the traffic come from, and **which channels** (organic, direct, social, etc.) drive it? These are two distinct problems with very different difficulty levels.
 
@@ -377,10 +377,10 @@ def top_k_accuracy(y_true, y_pred, k=1):
 	},
 ]} />
 
-## References
-
-- [Cloudflare Radar DNS top locations](https://developers.cloudflare.com/radar/investigate/dns/)
-- [CrUX BigQuery — country tables](https://developer.chrome.com/docs/crux/bigquery)
-- [Compositional data analysis — Aitchison geometry](https://en.wikipedia.org/wiki/Compositional_data)
-- [scikit-bio composition module](https://scikit.bio/docs/latest/generated/skbio.stats.composition.html)
-- [SimilarWeb Country Filter FAQs](https://support.similarweb.com/hc/en-us/articles/6315589042077)
+<Sources list={[
+	{ title: "Cloudflare Radar DNS top locations", url: "https://developers.cloudflare.com/radar/investigate/dns/" },
+	{ author: "CrUX BigQuery", title: "country tables", url: "https://developer.chrome.com/docs/crux/bigquery" },
+	{ author: "Compositional data analysis", title: "Aitchison geometry", url: "https://en.wikipedia.org/wiki/Compositional_data" },
+	{ title: "scikit-bio composition module", url: "https://scikit.bio/docs/latest/generated/skbio.stats.composition.html" },
+	{ title: "SimilarWeb Country Filter FAQs", url: "https://support.similarweb.com/hc/en-us/articles/6315589042077" },
+]} />
