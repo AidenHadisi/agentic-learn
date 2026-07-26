@@ -51,6 +51,13 @@ for (const entry of entries.filter((e) => e.isDirectory())) {
 		"Weak Spots",
 	]);
 
+	const sourcesPath = path.join(topic, "sources.md");
+	try {
+		await fs.access(sourcesPath);
+	} catch {
+		failures.push(`${rel(sourcesPath)}: missing — record what you read while researching`);
+	}
+
 	if (/\b(?:quiz )?score\s*[:=]\s*\d+/i.test(journal)) {
 		failures.push(`${rel(journalPath)}: contains a quiz score`);
 	}

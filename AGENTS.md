@@ -6,7 +6,7 @@ Before responding, read `.cursor/skills/teach/SKILL.md` and follow it.
 
 ## Ground rules
 
-- State lives in `topics/<slug>/` (syllabus + journal). Chat is ephemeral.
+- State lives in `topics/<slug>/` (syllabus + journal + sources). Chat is ephemeral.
 - Dispatch subagents to research when needed. They return findings; only the main agent writes files.
 - Lessons are MDX files built to self-contained HTML via `npm run lesson:build`.
 - Only use components from `lesson-kit/README.md`. No custom CSS.

@@ -43,6 +43,7 @@ lesson-kit/
 topics/<topic-slug>/
 ├── syllabus.md         # Mission, success criteria, sections
 ├── journal.md          # Profile, evidence, log, weak spots
+├── sources.md          # Running bibliography of everything researched
 └── lessons/
     ├── <n>-<slug>.mdx  # Source (compact, agent-authored)
     └── <n>-<slug>.html # Built artifact (open in browser)
