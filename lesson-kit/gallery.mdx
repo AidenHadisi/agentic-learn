@@ -1,4 +1,4 @@
-import { Meta, Callout, Quiz, Blank, Flashcards, Stepper, Reveal, Scenario, Playground, Tabs, Mermaid, Chart, CodeBlock, Figure, Sources, Ref } from "@learn/components";
+import { Meta, Callout, Quiz, Flashcards, Stepper, Reveal, Scenario, Playground, Tabs, Mermaid, Chart, CodeBlock, Figure, Sources, Ref } from "@learn/components";
 import { Step } from "./components/Stepper.jsx";
 import { Tab } from "./components/Tabs.jsx";
 
@@ -28,12 +28,6 @@ import { Tab } from "./components/Tabs.jsx";
 	{ q: "What color is the sky on a clear day?", options: ["Red", "Blue", "Green"], answer: 1, explain: "Rayleigh scattering causes shorter blue wavelengths to scatter more." },
 	{ q: "Which planet is closest to the sun?", options: ["Venus", "Mercury", "Mars"], answer: 1, explain: "Mercury orbits at about 58 million km from the sun." },
 ]} />
-
-## Blank
-
-The standard deviation is the square root of the <Blank answer={["variance", "var"]} hint="It has squared units." /> — type an answer and press Enter.
-
-One quarter written as a decimal is <Blank answer={0.25} tolerance={0.01} />.
 
 ## Flashcards
 
@@ -159,6 +153,19 @@ The precision/recall tradeoff, with the controls driving a live chart:
 
 ## Chart
 
+One component, five shapes. Pick the shape from what the data *is* — the heading
+on each example is the case it belongs to. Series colors are assigned from the
+lesson theme automatically, so only pass `backgroundColor` or `borderColor` when
+a specific color carries meaning.
+
+Compute curve data with a helper instead of typing coordinates by hand:
+
+export const losses = Array.from({ length: 25 }, (_, i) => i * 0.25);
+export const bellCurve = Array.from({ length: 29 }, (_, i) => -3.5 + i * 0.25);
+export const normalPdf = (z) => Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
+
+### Bar — comparing unordered categories
+
 <Chart
 	type="bar"
 	data={{
@@ -167,6 +174,110 @@ The precision/recall tradeoff, with the controls driving a live chart:
 	}}
 	options={{
 		plugins: { title: { display: true, text: "Monthly requests" } },
+		scales: { y: { title: { display: true, text: "Requests (thousands)" } } },
+	}}
+/>
+
+### Line — a function across its domain
+
+Use this whenever prose says "as $x$ grows" or "the curve flattens". Two
+functions on one chart is how you show a trade-off.
+
+<Chart
+	type="line"
+	data={{
+		labels: losses.map((w) => w.toFixed(2)),
+		datasets: [
+			{ label: "Squared loss (w − 3)²", data: losses.map((w) => (w - 3) ** 2), pointRadius: 0 },
+			{ label: "Absolute loss |w − 3|", data: losses.map((w) => Math.abs(w - 3)), pointRadius: 0 },
+		],
+	}}
+	options={{
+		plugins: { title: { display: true, text: "Squared loss punishes distance; absolute loss doesn't" } },
+		scales: {
+			x: { title: { display: true, text: "Prediction w" } },
+			y: { title: { display: true, text: "Loss" } },
+		},
+	}}
+/>
+
+### Scatter — the relationship between two variables
+
+The default figure for correlation, regression, and predicted-vs-actual. Add a
+second `line` dataset with `showLine` to draw a fit through the cloud.
+
+<Chart
+	type="scatter"
+	data={{
+		datasets: [
+			{
+				label: "Observations",
+				data: [
+					{ x: 1.2, y: 2.1 }, { x: 2.0, y: 2.8 }, { x: 2.4, y: 4.1 }, { x: 3.1, y: 4.4 },
+					{ x: 3.6, y: 6.0 }, { x: 4.2, y: 5.9 }, { x: 4.8, y: 7.6 }, { x: 5.3, y: 7.1 },
+					{ x: 6.0, y: 9.0 }, { x: 6.7, y: 8.7 },
+				],
+			},
+			{
+				label: "Least-squares fit",
+				type: "line",
+				data: [{ x: 1, y: 1.9 }, { x: 7, y: 9.4 }],
+				showLine: true,
+				pointRadius: 0,
+			},
+		],
+	}}
+	options={{
+		plugins: { title: { display: true, text: "Ad spend vs. signups, with fitted line" } },
+		scales: {
+			x: { title: { display: true, text: "Ad spend ($k)" } },
+			y: { title: { display: true, text: "Signups" } },
+		},
+	}}
+/>
+
+### Shaded region — a probability, an interval, an area
+
+Set `fill` on a dataset to shade under it. Give the shaded series `null` outside
+the region you care about and only that slice fills. Shade a region with real
+area — a far tail is only a few pixels tall and reads as nothing.
+
+<Chart
+	type="line"
+	data={{
+		labels: bellCurve.map((z) => z.toFixed(2)),
+		datasets: [
+			{ label: "Standard normal density", data: bellCurve.map(normalPdf), pointRadius: 0 },
+			{
+				label: "Within 1 SD of the mean (68%)",
+				data: bellCurve.map((z) => (z >= -1 && z <= 1 ? normalPdf(z) : null)),
+				fill: "origin",
+				pointRadius: 0,
+			},
+		],
+	}}
+	options={{
+		plugins: { title: { display: true, text: "Two-thirds of a normal distribution sits within 1 SD" } },
+		scales: {
+			x: { title: { display: true, text: "z (standard deviations from the mean)" } },
+			y: { title: { display: true, text: "Density" } },
+		},
+	}}
+/>
+
+### Pie — parts of one whole
+
+Only when the parts sum to a meaningful total. For comparing magnitudes across
+categories, use a bar chart instead.
+
+<Chart
+	type="doughnut"
+	data={{
+		labels: ["Organic", "Direct", "Social", "Paid", "Referral"],
+		datasets: [{ label: "Share of visits (%)", data: [50, 25, 5, 8, 12] }],
+	}}
+	options={{
+		plugins: { title: { display: true, text: "Channel mix for a typical SaaS site (%)" } },
 	}}
 />
 

@@ -156,6 +156,10 @@ Write `lessons/<n>-<slug>.mdx` for the student in your journal. Assume they know
 
 **Depth.** Prose teaches; tables, bullets, and callouts only recap what prose already explained — never introduce a concept inside one. Several paragraphs per concept is normal. If it doesn't fit at this depth, split the syllabus section rather than compress.
 
+**Choose the figure deliberately.** Every section that involves a quantity, a shape, or a relationship owes the student a picture. Left to habit you will reach for a markdown table or a bar chart every time; both are usually the wrong answer. Match the figure to what the thing *is*: a relationship between two variables is a scatter plot, a distribution is a histogram or a shaded density curve, a function is a line over its domain, a probability or interval is a shaded region, a process is a `Mermaid` diagram, and a parameter the student should feel is a `Playground`. Reserve bar charts for magnitudes across unordered categories.
+
+Two rules follow from this. If prose says "as $x$ grows", "notice how", or "try changing", that sentence is describing a figure you haven't drawn yet — draw it. And if a table runs past about five rows and the student needs to *find* something in it rather than read it top to bottom, it shouldn't be a markdown table. See **Charts** in `lesson-kit/README.md` for what each type needs.
+
 **Self-check.** Reread through the student's eyes: "Could someone who has never seen this term follow every paragraph?" Any unexplained term fails — fix it before building.
 
 **Mechanics.** Catalog components only (`lesson-kit/README.md`). Cite claims inline with `<Ref>` so each one points at the source behind it. End with practice exercises, a quiz, and a `Sources` block.

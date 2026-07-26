@@ -3,9 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSvgMap, svgMapPath } from "./mermaid.mjs";
+import { evaluateExpression, parseLesson } from "./lesson-ast.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const kitDir = path.join(root, "lesson-kit");
+const topicsDir = path.join(root, "topics");
 const catalogPath = path.join(kitDir, "components/index.jsx");
 
 const [command, ...args] = process.argv.slice(2);
@@ -60,119 +62,175 @@ function loadCatalog() {
 	return names;
 }
 
-function validateComponents(mdxSource) {
+function validateComponents(lesson, failures) {
 	const catalog = loadCatalog();
-	const used = [...new Set(
-		(mdxSource.match(/<([A-Z]\w*)/g) || []).map((m) => m.slice(1)),
-	)];
-	if (used.length === 0) return;
 
-	const unknown = used.filter((name) => !catalog.has(name));
-	if (unknown.length > 0) {
-		console.error(`\nBuild failed: unknown components (not in lesson-kit): ${unknown.join(", ")}`);
-		console.error(`Catalog exports: ${[...catalog].sort().join(", ")}`);
-		process.exit(1);
-	}
-
-	const importSection = mdxSource.split(/\n(?=[^i]|i[^m])/)[0] || "";
-	const missing = used.filter((name) => !importSection.includes(name));
-	if (missing.length > 0) {
-		console.error(`\nBuild failed: components used but not imported: ${missing.join(", ")}`);
-		console.error(`Add to the top of your MDX:\n  import { ${missing.join(", ")} } from "@learn/components";\n`);
-		process.exit(1);
+	for (const [name, line] of lesson.used) {
+		if (!catalog.has(name)) {
+			failures.push(
+				`line ${line}: <${name}> is not in the lesson kit.\n` +
+				`  Catalog: ${[...catalog].sort().join(", ")}`,
+			);
+		} else if (!lesson.imported.has(name)) {
+			failures.push(
+				`line ${line}: <${name}> is used but not imported.\n` +
+				`  Add it to the import at the top: import { ${name} } from "@learn/components";`,
+			);
+		}
 	}
 }
 
-function extractQuizQuestionArrays(mdxSource) {
-	const arrays = [];
-	const marker = "<Quiz";
-	let from = 0;
-	while (from < mdxSource.length) {
-		const start = mdxSource.indexOf(marker, from);
-		if (start === -1) break;
-		const questionsAt = mdxSource.indexOf("questions={", start);
-		if (questionsAt === -1 || questionsAt > mdxSource.indexOf(">", start) + 2000) {
-			from = start + marker.length;
+function validateQuizzes(lesson, failures) {
+	for (const quiz of lesson.quizzes) {
+		if (!quiz.expression) {
+			failures.push(`line ${quiz.line}: <Quiz> is missing a questions={[...]} array`);
 			continue;
 		}
-		const bracketStart = mdxSource.indexOf("[", questionsAt);
-		if (bracketStart === -1) {
-			from = start + marker.length;
-			continue;
-		}
-		let depth = 0;
-		let end = -1;
-		for (let i = bracketStart; i < mdxSource.length; i++) {
-			const ch = mdxSource[i];
-			if (ch === "[") depth++;
-			else if (ch === "]") {
-				depth--;
-				if (depth === 0) {
-					end = i;
-					break;
-				}
-			}
-		}
-		if (end === -1) {
-			console.error("\nBuild failed: could not parse Quiz questions={[...]} array");
-			process.exit(1);
-		}
-		arrays.push(mdxSource.slice(bracketStart, end + 1));
-		from = end + 1;
-	}
-	return arrays;
-}
 
-function validateQuizAnswers(mdxSource) {
-	const arrays = extractQuizQuestionArrays(mdxSource);
-	for (const literal of arrays) {
-		let questions;
-		try {
-			questions = new Function(`return (${literal})`)();
-		} catch (err) {
-			console.error("\nBuild failed: Quiz questions array is not valid JavaScript");
-			console.error(err.message);
-			process.exit(1);
+		const parsed = evaluateExpression(quiz.expression);
+		if (!parsed.ok) {
+			failures.push(
+				`line ${quiz.line}: <Quiz> questions must be a plain array literal so answers can be checked.\n` +
+				`  ${parsed.reason}`,
+			);
+			continue;
 		}
-		if (!Array.isArray(questions)) {
-			console.error("\nBuild failed: Quiz questions must be an array");
-			process.exit(1);
+		if (!Array.isArray(parsed.value)) {
+			failures.push(`line ${quiz.line}: <Quiz> questions must be an array`);
+			continue;
 		}
-		questions.forEach((q, i) => {
-			if (!q || !Array.isArray(q.options) || q.options.length === 0) {
-				console.error(`\nBuild failed: Quiz question ${i + 1} needs a non-empty options array`);
-				process.exit(1);
+
+		parsed.value.forEach((question, index) => {
+			const where = `line ${quiz.line}, question ${index + 1}`;
+			if (!question || !Array.isArray(question.options) || question.options.length === 0) {
+				failures.push(`${where}: needs a non-empty options array`);
+				return;
 			}
-			const { answer, options } = q;
+
+			const { answer, options, q } = question;
 			if (typeof answer === "number") {
 				if (!Number.isInteger(answer) || answer < 0 || answer >= options.length) {
-					console.error(`\nBuild failed: Quiz question ${i + 1} answer index ${answer} is out of range (0–${options.length - 1})`);
-					console.error(`  q: ${q.q}`);
-					process.exit(1);
+					failures.push(
+						`${where}: answer index ${answer} is out of range (0–${options.length - 1})\n  q: ${q}`,
+					);
 				}
 			} else if (typeof answer === "string") {
 				if (!options.includes(answer)) {
-					console.error(`\nBuild failed: Quiz question ${i + 1} answer string not found in options`);
-					console.error(`  q: ${q.q}`);
-					console.error(`  answer: ${JSON.stringify(answer)}`);
-					console.error(`  options: ${JSON.stringify(options)}`);
-					process.exit(1);
+					failures.push(
+						`${where}: answer string is not one of the options\n` +
+						`  q: ${q}\n  answer: ${JSON.stringify(answer)}\n  options: ${JSON.stringify(options)}`,
+					);
 				}
 			} else {
-				console.error(`\nBuild failed: Quiz question ${i + 1} answer must be an index or exact option string`);
-				console.error(`  q: ${q.q}`);
-				process.exit(1);
+				failures.push(`${where}: answer must be an option index or an exact option string\n  q: ${q}`);
 			}
 		});
 	}
 }
 
-function validateSources(mdxSource, resolved) {
-	if (resolved.includes(`${path.sep}lesson-kit${path.sep}`)) return;
-	if (!/<Sources\b/.test(mdxSource)) {
-		console.error("\nBuild failed: lesson must end with a <Sources list={[...]} /> component");
+function validateSources(lesson, failures) {
+	if (!lesson.sources) {
+		failures.push("lesson must end with a <Sources list={[...]} /> component");
+		return null;
+	}
+
+	const parsed = evaluateExpression(lesson.sources.expression ?? "");
+	if (!parsed.ok || !Array.isArray(parsed.value)) {
+		failures.push(`line ${lesson.sources.line}: <Sources> list must be a plain array literal`);
+		return null;
+	}
+
+	parsed.value.forEach((source, index) => {
+		if (!source?.url) return;
+		// Sources.jsx renders the hostname with `new URL`, which throws mid-render
+		// on a malformed href and blanks the whole lesson.
+		try {
+			new URL(source.url);
+		} catch {
+			failures.push(
+				`line ${lesson.sources.line}: source ${index + 1} has an unparseable url: ${JSON.stringify(source.url)}`,
+			);
+		}
+	});
+
+	return parsed.value.length;
+}
+
+function validateRefs(lesson, sourceCount, failures) {
+	if (sourceCount === null) return;
+
+	for (const ref of lesson.refs) {
+		const parsed = evaluateExpression(ref.expression ?? "");
+		if (!parsed.ok) {
+			failures.push(`line ${ref.line}: <Ref n={...}> must be a number or an array of numbers`);
+			continue;
+		}
+
+		const numbers = Array.isArray(parsed.value) ? parsed.value : [parsed.value];
+		for (const n of numbers) {
+			if (!Number.isInteger(n) || n < 1 || n > sourceCount) {
+				failures.push(
+					`line ${ref.line}: <Ref n={${n}}> does not point at a source ` +
+					`(the bibliography has ${sourceCount} ${sourceCount === 1 ? "entry" : "entries"})`,
+				);
+			}
+		}
+	}
+}
+
+function validateLesson(mdxSource, resolved) {
+	const lesson = parseLesson(mdxSource);
+	const failures = [];
+
+	validateComponents(lesson, failures);
+	validateQuizzes(lesson, failures);
+
+	// The gallery demonstrates components rather than teaching, so it carries no
+	// bibliography.
+	if (!resolved.includes(`${path.sep}lesson-kit${path.sep}`)) {
+		validateRefs(lesson, validateSources(lesson, failures), failures);
+	}
+
+	if (failures.length > 0) {
+		console.error(`\nBuild failed — ${path.relative(root, resolved)}\n`);
+		failures.forEach((failure) => console.error(`  ${failure}\n`));
 		process.exit(1);
 	}
+
+	return lesson;
+}
+
+async function buildLesson(resolved) {
+	const mdxSource = fs.readFileSync(resolved, "utf8");
+	const lesson = validateLesson(mdxSource, resolved);
+	await buildSvgMap(mdxSource);
+
+	execSync("npx vite build --mode production", {
+		cwd: kitDir,
+		stdio: "inherit",
+		env: {
+			...process.env,
+			LESSON_ENTRY: resolved,
+			MERMAID_SVGS: svgMapPath,
+			LESSON_HAS_MATH: lesson.hasMath ? "1" : "",
+		},
+	});
+
+	const built = path.join(kitDir, "dist", "index.html");
+	if (!fs.existsSync(built)) {
+		console.error("Build produced no output");
+		process.exit(1);
+	}
+
+	let html = fs.readFileSync(built, "utf8");
+	const heading = mdxSource.match(/^#\s+(.+)$/m);
+	if (heading) {
+		html = html.replace(/<title>[^<]*<\/title>/, `<title>${heading[1]}</title>`);
+	}
+
+	const outHtml = resolved.replace(/\.mdx$/, ".html");
+	fs.writeFileSync(outHtml, html);
+	console.log(`Built → ${path.relative(root, outHtml)}`);
 }
 
 if (command === "new") {
@@ -204,43 +262,23 @@ if (command === "new") {
 		console.error(`Not found: ${resolved}`);
 		process.exit(1);
 	}
+	await buildLesson(resolved);
+} else if (command === "build-all") {
+	const lessons = fs.existsSync(topicsDir)
+		? fs.readdirSync(topicsDir)
+			.map((slug) => path.join(topicsDir, slug, "lessons"))
+			.filter((dir) => fs.existsSync(dir))
+			.flatMap((dir) => fs.readdirSync(dir)
+				.filter((name) => name.endsWith(".mdx"))
+				.sort()
+				.map((name) => path.join(dir, name)))
+		: [];
 
-	const mdxSource = fs.readFileSync(resolved, "utf8");
-	validateComponents(mdxSource);
-	validateQuizAnswers(mdxSource);
-	validateSources(mdxSource, resolved);
-	await buildSvgMap(mdxSource);
-
-	const outHtml = resolved.replace(/\.mdx$/, ".html");
-
-	execSync(
-		`npx vite build --mode production`,
-		{
-			cwd: kitDir,
-			stdio: "inherit",
-			env: {
-				...process.env,
-				LESSON_ENTRY: resolved,
-				MERMAID_SVGS: svgMapPath,
-			},
-		},
-	);
-
-	const built = path.join(kitDir, "dist", "index.html");
-	if (fs.existsSync(built)) {
-		let html = fs.readFileSync(built, "utf8");
-		const mdx = fs.readFileSync(resolved, "utf8");
-		const headingMatch = mdx.match(/^#\s+(.+)$/m);
-		if (headingMatch) {
-			html = html.replace(/<title>[^<]*<\/title>/, `<title>${headingMatch[1]}</title>`);
-		}
-		fs.writeFileSync(outHtml, html);
-		console.log(`Built → ${path.relative(root, outHtml)}`);
-	} else {
-		console.error("Build produced no output");
-		process.exit(1);
+	for (const lesson of lessons) {
+		await buildLesson(lesson);
 	}
+	console.log(`\nRebuilt ${lessons.length} lesson(s)`);
 } else {
-	console.error("Commands: new, build");
+	console.error("Commands: new, build, build-all");
 	process.exit(1);
 }

@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from "react";
+import React, { useCallback } from "react";
+import { contentKey, usePersistentState } from "../persist.js";
 
 // Answers are validated at build time by scripts/lesson.mjs. Tagging the correct
 // option before shuffling keeps the authored index from having to be remapped.
@@ -12,8 +13,7 @@ function prepareQuestion({ answer, options, ...rest }) {
 	return { ...rest, options: prepared };
 }
 
-function QuizQuestion({ question, onAnswer }) {
-	const [selected, setSelected] = useState(null);
+function QuizQuestion({ question, selected, onSelect, onNext }) {
 	const answered = selected !== null;
 	const isCorrect = answered && question.options[selected].correct;
 
@@ -32,7 +32,7 @@ function QuizQuestion({ question, onAnswer }) {
 							key={i}
 							className={cls}
 							disabled={answered}
-							onClick={() => setSelected(i)}
+							onClick={() => onSelect(i)}
 						>
 							<span className="quiz__letter">{String.fromCharCode(65 + i)}</span>
 							{opt.text}
@@ -41,51 +41,64 @@ function QuizQuestion({ question, onAnswer }) {
 				})}
 			</div>
 			{answered && (
-				<div className="quiz__explain">
-					<strong>{isCorrect ? "Correct!" : "Not quite."}</strong>{" "}
-					{question.explain}
-				</div>
-			)}
-			{answered && (
-				<button className="btn btn--primary" onClick={() => onAnswer(isCorrect)}>
-					Next
-				</button>
+				<>
+					<div className="quiz__explain">
+						<strong>{isCorrect ? "Correct!" : "Not quite."}</strong>{" "}
+						{question.explain}
+					</div>
+					<button className="btn btn--primary" onClick={onNext}>Next</button>
+				</>
 			)}
 		</div>
 	);
 }
 
 export function Quiz({ questions: rawQuestions }) {
-	const [questions] = useState(() => rawQuestions.map(prepareQuestion));
-	const [current, setCurrent] = useState(0);
-	const [correct, setCorrect] = useState(0);
-	const [finished, setFinished] = useState(false);
+	// Keyed by the full question content so a lesson's quizzes stay distinct from
+	// each other, and so editing any of them discards the saved run rather than
+	// replaying a shuffle of options that no longer exist.
+	const key = contentKey("quiz", rawQuestions.map((q) => [q.q, ...q.options].join("|")));
+	const [state, setState, reset] = usePersistentState(key, () => ({
+		questions: rawQuestions.map(prepareQuestion),
+		selections: rawQuestions.map(() => null),
+		cursor: 0,
+	}));
 
-	const handleAnswer = useCallback((wasCorrect) => {
-		if (wasCorrect) setCorrect((c) => c + 1);
-		if (current + 1 >= questions.length) {
-			setFinished(true);
-		} else {
-			setCurrent((c) => c + 1);
-		}
-	}, [current, questions.length]);
+	const { questions, selections, cursor } = state;
 
-	if (finished) {
+	const select = useCallback((option) => {
+		setState((prev) => ({
+			...prev,
+			selections: prev.selections.map((s, i) => (i === cursor ? option : s)),
+		}));
+	}, [setState, cursor]);
+
+	const next = useCallback(() => {
+		setState((prev) => ({ ...prev, cursor: prev.cursor + 1 }));
+	}, [setState]);
+
+	if (cursor >= questions.length) {
+		const correct = selections.filter(
+			(selected, i) => selected !== null && questions[i].options[selected].correct,
+		).length;
 		return (
 			<div className="quiz__score">
 				<h3>Score: {correct} / {questions.length}</h3>
 				<p className="text-muted">This score stays in your browser and is never recorded.</p>
+				<button className="btn btn--sm btn--ghost" onClick={reset}>Retake</button>
 			</div>
 		);
 	}
 
 	return (
 		<div className="quiz">
-			<p className="quiz__progress">Question {current + 1} of {questions.length}</p>
+			<p className="quiz__progress">Question {cursor + 1} of {questions.length}</p>
 			<QuizQuestion
-				key={current}
-				question={questions[current]}
-				onAnswer={handleAnswer}
+				key={cursor}
+				question={questions[cursor]}
+				selected={selections[cursor]}
+				onSelect={select}
+				onNext={next}
 			/>
 		</div>
 	);
