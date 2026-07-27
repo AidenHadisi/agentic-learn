@@ -1,10 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { toString } from "mdast-util-to-string";
+import { gfm } from "micromark-extension-gfm";
 
-const root = import.meta.dirname;
+const root = path.dirname(fileURLToPath(import.meta.url));
 const topicsDir = path.join(root, "topics");
 const outPath = path.join(root, "index.html");
-const style = fs.readFileSync(path.join(root, "index.css"), "utf8");
 
 function read(file) {
 	return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
@@ -18,55 +22,128 @@ function escapeHtml(text) {
 		.replace(/"/g, "&quot;");
 }
 
-function inlineMarkdown(text) {
-	return escapeHtml(text)
-		.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-		.replace(/\*([^*]+)\*/g, "<em>$1</em>")
-		.replace(/`([^`]+)`/g, "<code>$1</code>");
+function parse(markdown) {
+	return fromMarkdown(markdown, {
+		extensions: [gfm()],
+		mdastExtensions: [gfmFromMarkdown()],
+	});
 }
 
-// Everything under `## <heading>` up to the next `##`.
-function sectionLines(markdown, heading) {
-	const lines = markdown.split("\n");
-	const start = lines.findIndex((l) => l.trim().toLowerCase() === `## ${heading.toLowerCase()}`);
+/** Render mdast phrasing nodes (bold/italic/code/links) to HTML. */
+function phrasingToHtml(nodes) {
+	if (!nodes) return "";
+	return nodes.map((node) => {
+		switch (node.type) {
+			case "text":
+				return escapeHtml(node.value);
+			case "strong":
+				return `<strong>${phrasingToHtml(node.children)}</strong>`;
+			case "emphasis":
+				return `<em>${phrasingToHtml(node.children)}</em>`;
+			case "inlineCode":
+				return `<code>${escapeHtml(node.value)}</code>`;
+			case "link":
+				return `<a href="${escapeHtml(node.url)}">${phrasingToHtml(node.children)}</a>`;
+			case "break":
+				return "<br />";
+			default:
+				return node.children ? phrasingToHtml(node.children) : escapeHtml(toString(node));
+		}
+	}).join("");
+}
+
+function headingText(node) {
+	return toString(node).trim();
+}
+
+/** Nodes under `## <heading>` until the next `##` (or end). */
+function sectionChildren(tree, heading) {
+	const want = heading.toLowerCase();
+	const children = tree.children;
+	const start = children.findIndex(
+		(n) => n.type === "heading" && n.depth === 2 && headingText(n).toLowerCase() === want,
+	);
 	if (start === -1) return [];
-	const rest = lines.slice(start + 1);
-	const end = rest.findIndex((l) => l.startsWith("## "));
-	return (end === -1 ? rest : rest.slice(0, end)).map((l) => l.trim()).filter(Boolean);
+
+	const out = [];
+	for (let i = start + 1; i < children.length; i++) {
+		const node = children[i];
+		if (node.type === "heading" && node.depth <= 2) break;
+		out.push(node);
+	}
+	return out;
+}
+
+function listItems(nodes) {
+	return nodes
+		.filter((n) => n.type === "list")
+		.flatMap((list) => list.children.filter((n) => n.type === "listItem"));
+}
+
+/** Phrasing inside a list item (usually one paragraph's children). */
+function itemPhrasing(item) {
+	const paragraph = item.children.find((n) => n.type === "paragraph");
+	return paragraph?.children ?? [];
 }
 
 function parseSyllabus(markdown) {
-	const title = markdown.match(/^#\s+(.+)$/m)?.[1].trim() ?? "";
-	const body = markdown.split("\n");
-	const titleAt = body.findIndex((l) => /^#\s+/.test(l));
-	const summary = body
+	const tree = parse(markdown);
+
+	const titleNode = tree.children.find((n) => n.type === "heading" && n.depth === 1);
+	const title = titleNode ? headingText(titleNode) : "";
+
+	const titleAt = tree.children.indexOf(titleNode);
+	const summaryNode = tree.children
 		.slice(titleAt + 1)
-		.find((l) => l.trim() && !l.startsWith("#")) ?? "";
+		.find((n) => n.type === "paragraph");
+	const summaryHtml = summaryNode ? phrasingToHtml(summaryNode.children) : "";
 
-	const sections = sectionLines(markdown, "Sections")
-		.filter((line) => /^- \[[ xX]\]/.test(line))
-		.map((line) => {
-			const done = /^- \[[xX]\]/.test(line);
-			const rest = line.replace(/^- \[[ xX]\]\s*/, "");
-			const number = Number(rest.match(/^(\d+)\./)?.[1]);
-			return { done, number, text: rest.replace(/^\d+\.\s*/, "") };
-		});
+	const sections = listItems(sectionChildren(tree, "Sections")).map((item) => {
+		const phrasing = itemPhrasing(item);
+		const plain = toString({ type: "paragraph", children: phrasing }).trim();
+		const number = Number(plain.match(/^(\d+)\./)?.[1]);
 
-	return { title, summary: summary.trim(), sections };
+		// Drop the leading "N. " text node so the title strong stands alone.
+		let rest = phrasing;
+		if (rest[0]?.type === "text") {
+			rest = [
+				{ ...rest[0], value: rest[0].value.replace(/^\d+\.\s*/, "") },
+				...rest.slice(1),
+			];
+			if (!rest[0].value) rest = rest.slice(1);
+		}
+
+		const strong = rest.find((n) => n.type === "strong");
+		const strongAt = rest.indexOf(strong);
+		const titleText = strong ? toString(strong) : toString({ type: "paragraph", children: rest });
+		const outcomeNodes = strongAt >= 0 ? rest.slice(strongAt + 1) : [];
+
+		return {
+			done: item.checked === true,
+			number,
+			title: titleText,
+			outcomeHtml: phrasingToHtml(outcomeNodes).trim(),
+		};
+	});
+
+	return { title, summaryHtml, sections };
 }
 
 function parseWeakSpots(markdown) {
-	return sectionLines(markdown, "Weak Spots")
-		.filter((line) => line.startsWith("- "))
-		.map((line) => line.slice(2).trim())
-		.filter((line) => !/^none\b/i.test(line));
+	return listItems(sectionChildren(parse(markdown), "Weak Spots"))
+		.map((item) => ({
+			html: phrasingToHtml(itemPhrasing(item)).trim(),
+			plain: toString(item).trim(),
+		}))
+		.filter(({ html, plain }) => html && !/^none\b/i.test(plain))
+		.map(({ html }) => html);
 }
 
 function lessonLink(slug, number) {
 	if (!Number.isInteger(number)) return null;
 	const dir = path.join(topicsDir, slug, "lessons");
 	if (!fs.existsSync(dir)) return null;
-	const file = fs.readdirSync(dir).find((name) => name.startsWith(`${number}-`) && name.endsWith(".html"));
+	const file = fs.readdirSync(dir).find((name) => name.endsWith(".html") && name.startsWith(`${number}-`));
 	return file ? `topics/${slug}/lessons/${file}` : null;
 }
 
@@ -80,25 +157,23 @@ function renderTopic(slug) {
 	const percent = total > 0 ? Math.round((done / total) * 100) : 0;
 
 	const sections = syllabus.sections.map((section) => {
-		const [, bold, outcome] = section.text.match(/^\*\*(.+?)\*\*\s*(.*)$/s) ?? [];
-		const title = escapeHtml(bold ?? section.text);
+		const title = escapeHtml(section.title);
 		const href = lessonLink(slug, section.number);
-		const label = href ? `<a href="${href}">${title}</a>` : `<strong>${title}</strong>`;
 		return `<li class="${section.done ? "done" : ""}">
 	<span class="box">${section.done ? "✓" : ""}</span>
 	<span class="num">${section.number || ""}</span>
-	<span class="text">${label} ${inlineMarkdown(outcome ?? "")}</span>
+	<span class="text">${href ? `<a href="${href}">${title}</a>` : `<strong>${title}</strong>`}${section.outcomeHtml ? ` ${section.outcomeHtml}` : ""}</span>
 </li>`;
 	}).join("\n");
 
 	const weak = weakSpots.length === 0 ? "" : `<div class="weak">
 	<h3>Weak spots</h3>
-	<ul>${weakSpots.map((w) => `<li>${inlineMarkdown(w)}</li>`).join("")}</ul>
+	<ul>${weakSpots.map((w) => `<li>${w}</li>`).join("")}</ul>
 </div>`;
 
 	return `<article class="card">
 	<h2>${escapeHtml(syllabus.title)}</h2>
-	<p class="summary">${inlineMarkdown(syllabus.summary)}</p>
+	<p class="summary">${syllabus.summaryHtml}</p>
 	<div class="progress">
 		<div class="bar"><span style="width:${percent}%"></span></div>
 		<span class="count">${done} / ${total}</span>
@@ -110,16 +185,13 @@ ${sections}
 </article>`;
 }
 
+const STYLE = fs.readFileSync(path.join(root, "index.css"), "utf8");
+
 const slugs = fs.existsSync(topicsDir)
-	? fs.readdirSync(topicsDir, { withFileTypes: true })
-		.filter((e) => e.isDirectory())
-		.map((e) => e.name)
-		.sort()
+	? fs.readdirSync(topicsDir).filter((name) => fs.statSync(path.join(topicsDir, name)).isDirectory()).sort()
 	: [];
 
 const cards = slugs.map(renderTopic).filter(Boolean);
-const n = cards.length;
-const plural = n === 1 ? "" : "s";
 
 const html = `<!DOCTYPE html>
 <html lang="en">
@@ -127,17 +199,17 @@ const html = `<!DOCTYPE html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Learning Index</title>
-<style>${style}</style>
+<style>${STYLE}</style>
 </head>
 <body>
 <main>
 <h1>Learning Index</h1>
-<p class="lede">${n} topic${plural} · generated by <code>npm run index:build</code></p>
-${n > 0 ? cards.join("\n") : `<p class="empty">No topics yet.</p>`}
+<p class="lede">${cards.length} topic${cards.length === 1 ? "" : "s"} · generated by <code>npm run index:build</code></p>
+${cards.length > 0 ? cards.join("\n") : `<p class="empty">No topics yet.</p>`}
 </main>
 </body>
 </html>
 `;
 
 fs.writeFileSync(outPath, html);
-console.log(`Built → ${path.relative(root, outPath)} (${n} topic${plural})`);
+console.log(`Built → ${path.relative(root, outPath)} (${cards.length} topic${cards.length === 1 ? "" : "s"})`);
