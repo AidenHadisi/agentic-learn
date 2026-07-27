@@ -164,6 +164,8 @@ Two rules follow from this. If prose says "as $x$ grows", "notice how", or "try 
 
 **Mechanics.** Catalog components only (`lesson-kit/README.md`). Cite claims inline with `<Ref>` so each one points at the source behind it. End with practice exercises, a quiz, and a `Sources` block.
 
+**Quiz writing.** Options are shuffled at runtime, so position is not a tell — **length is**. Do not make the correct option the longest or most carefully worded. Write every option at roughly the same length and specificity; distractors must be plausible misconceptions from this lesson, not vague padding. After drafting, scan lengths: if the correct answer is uniquely longest, shorten it or lengthen the distractors until none stands out.
+
 ## Step 4 — Build and verify
 
 Run `npm run lesson:build -- <path.mdx>`. Fix errors and rebuild until clean. Confirm the `.html` exists before teaching from it.
@@ -172,7 +174,7 @@ Run `npm run lesson:build -- <path.mdx>`. Fix errors and rebuild until clean. Co
 
 Handing over a document is not teaching. Tell the student where the built lesson is, then walk it in chat one idea at a time — never dump the whole lesson.
 
-After each idea, check understanding with an AskQuestion multiple-choice that tests *application*, not recall of the sentence they just read.
+After each idea, check understanding with an AskQuestion multiple-choice that tests *application*, not recall of the sentence they just read. Same length rule as lesson quizzes: don't make the right choice the longest.
 
 On a wrong answer: re-explain from a different angle (new analogy or example, not the same words louder), then re-check with a *different* question. Note every stumble for Weak Spots. Welcome tangent questions, answer them, return to the thread. Don't rush — the goal is understanding, not coverage.
 

@@ -1,0 +1,277 @@
+import { Meta, Callout, Quiz, Stepper, Step, Reveal, Scenario, Mermaid, Chart, Ref, Sources } from "@learn/components";
+
+# Error Analysis: Reading Your Own Failures
+
+<Meta>From a pile of traces to a counted failure taxonomy</Meta>
+
+## The Dashboard That Lied
+
+Your support workflow from the last lesson is live. The eval suite you sketched in a meeting — hallucination, toxicity, helpfulness, tone — runs green at 94%. On Friday a customer escalates: the bot quoted a **30-day** refund window. Policy is **14 days**. Nothing in the suite caught it, because nobody had ever written a case for refund-window factuality. The suite was a list of the team's *guesses*. It was never a list of the model's *failures*.<Ref n={1}/>
+
+Section 1 taught you that criteria drift is real: you discover what "good" means by reading outputs. This lesson turns that observation into a method. The method has a name — **error analysis** — and a concrete artifact at the end: a small table of named failure modes with counts, ranked by how often they actually happen. That table, not a metric menu and not a brainstorm, decides what you will measure next.
+
+<Callout variant="key" title="The order is reversed">
+In ordinary software you write the contract, then the tests. Here you read the failures first. The taxonomy is the contract you did not know you needed.
+</Callout>
+
+## Why This Comes Before Metrics
+
+Engineers reach for scores because scores feel like engineering. Error analysis feels like research. That instinct is backwards for generative systems. You cannot evaluate what you have not named, and you cannot name what you have not seen. Imagining failure modes produces a flat list of generic worries. Reading produces a sharp distribution of the specific things *this* product gets wrong — the ones that repeat, the ones that cluster, the ones a real check can be written against.<Ref n={1}/>
+
+There is a classical precedent. Andrew Ng's advice for ordinary machine learning was already: look at about a hundred misclassified examples, tally the categories, and prioritize by how much of the error mass each explains.<Ref n={2}/> LLM error analysis is the same job, applied to **traces** — full causal logs — rather than single predictions, and with vocabulary borrowed from qualitative research.
+
+The product of this lesson is not a scorer and not a dataset. It is the **table of contents** those later tools will fill in.
+
+## What You Need Before You Read
+
+Error analysis is cheap to do and expensive to do wrong. Most of the wrongness is set before you open a single row.
+
+A **trace** has to be *judgeable*. It is not just the model's final string. It is the full input, the full output, and enough surrounding context that a domain expert can decide whether the system did the job: retrieved chunks for a RAG answer, tool calls and their results for an agent, the user's real goal for anything conversational. If you cannot tell from the record whether the output was right, you do not have a trace — you have a string. Fix the logging first.<Ref n={3}/>
+
+Sample from real production when you can — roughly a hundred representative interactions from recent traffic, stratified if free/paid or first-message/deep-thread behave differently. Demo-perfect prompts and synthetic happy paths only show you the failures you already imagined. If you have no production traffic yet, provisional synthetic traces are fine to *start*; they are not a substitute for re-running the process once real users arrive.
+
+Have one place to write. One row per trace. A column for enough of the trace to judge it, a column for your note, and a column — empty for now — for the failure mode you will assign later. A spreadsheet is enough.
+
+## Pass One: Open Coding
+
+**Open coding** is the first read. One trace at a time. You ask one question — *did this fully do the job the user came for?* — and when the answer is no, you write a single plain-language sentence describing what went wrong. No dropdown. No taxonomy. No "hallucination." The categories have not earned their names yet.<Ref n={4}/>
+
+The craft lives in the sentence. Four rules separate notes that become a taxonomy from notes that become noise.<Ref n={3}/>
+
+<Stepper>
+	<Step title="Describe the failure, not the fix">
+		Write "cited a document that never mentions refunds," not "needs better retrieval." The fix is a hypothesis you will test later. The failure is the thing you actually saw. The moment you write the fix, you have stopped observing and started guessing — and guessing is the bias this method exists to remove.
+	</Step>
+	<Step title="Label the first upstream failure">
+		In a multi-step trace, one early mistake cascades into a string of downstream symptoms. The retrieval grabs the wrong doc, so the answer is wrong, so the follow-up is evasive. Label all four and you have quadruple-counted one bug. Find the earliest place the trajectory went wrong and code that.
+	</Step>
+	<Step title="No taxonomy yet">
+		Do not reach for a category list. Free text only. Premature categories are the single most common way error analysis quietly turns into confirmation of what you already believed.
+	</Step>
+	<Step title="Be specific, in your own words">
+		"Wrong" is useless. "Answered for the US plan when the user asked about the EU plan" is a failure mode waiting to be born. Vague notes cluster into vague modes that map to no check anyone can write.
+	</Step>
+</Stepper>
+
+Mark the clean ones too. A trace that did the job gets a note that says so. The ratio of good to bad is a number you want, and the good traces are your working definition of what "right" looks like for this product.
+
+Who does this pass? A **domain expert** — ideally one opinionated person who owns product judgment for this workflow ("benevolent dictator"). A contractor or a model can label *against* a taxonomy later. Neither can invent the right one, because inventing it requires knowing what "good for this product, this quarter" means.<Ref n={4}/>
+
+### First Upstream Failure, Worked
+
+Here is one support-workflow trace with several visible problems. Only one of them is the first upstream failure.
+
+<Mermaid chart={`flowchart TD
+	U["User: How do I get a refund for order 8841?"] --> R["Retrieve: pulls Cancellation Policy doc"]
+	R --> D["Draft: invents a 30-day window, cites the wrong doc"]
+	D --> F["Follow-up: hedges when user pushes back"]
+	F --> E["Escalation: user asks for a human; bot keeps chatting"]
+`} />
+
+The draft is wrong. The follow-up is evasive. The bot misses the escalation. If you tag all three, your "most common failure" becomes an artifact of how long the cascade ran. The first upstream failure is **retrieval returned the cancellation doc for a refund question**. Everything after is consequence.
+
+Notice what that note does *not* say. It does not say "Pinecone index is stale" or "embeddings need a retrain." Open coding records **observable behavior in the trace**, not an engineering postmortem. Diagnosis comes after you know which behaviors dominate.<Ref n={5}/>
+
+<Scenario
+	start="q1"
+	nodes={[
+		{
+			id: "q1",
+			text: "A ticket-classifier DAG: (1) extract entities from the ticket, (2) classify intent, (3) assign priority, (4) route to a queue. Trace 47: the extractor drops the order ID, the classifier still picks \"refund,\" priority becomes P1 because refunds are always urgent, and the ticket lands in the wrong queue. What is the first upstream failure?",
+			choices: [
+				{ label: "Wrong queue assignment", next: "wrong_queue" },
+				{ label: "Priority marked P1 incorrectly", next: "wrong_priority" },
+				{ label: "Entity extract dropped the order ID", next: "correct" },
+				{ label: "Classifier should not have said refund", next: "wrong_class" },
+			],
+		},
+		{
+			id: "wrong_queue",
+			text: "The wrong queue is the last symptom in the cascade. Ask: what was the earliest step that was already wrong?",
+			choices: [{ label: "Try again", next: "q1" }],
+		},
+		{
+			id: "wrong_priority",
+			text: "Priority looks wrong, but it was computed from a broken handoff — the order ID was already missing. Priority is downstream.",
+			choices: [{ label: "Try again", next: "q1" }],
+		},
+		{
+			id: "wrong_class",
+			text: "Intent may even be right given the text. The decisive break was earlier: the extract node lost the identifier the rest of the graph needs.",
+			choices: [{ label: "Try again", next: "q1" }],
+		},
+		{
+			id: "correct",
+			text: "Yes. First upstream failure = entity extract dropped the order ID. The rest of the graph is doing what it was told with incomplete inputs. Code that, and your counts stay honest.",
+		},
+	]}
+/>
+
+## Pass Two: Axial Coding
+
+After an hour you have a pile of free-form notes. **Axial coding** is where they become structure. You pile the notes, merge the ones that say the same thing in different words, and let a small set of named failure modes surface — usually four to eight. Then you count each mode and rank by frequency.<Ref n={4}/>
+
+Think of it as a card sort. Open coding writes the cards. Axial coding piles the cards and names the piles.
+
+This is the one step where an LLM can genuinely help: paste your notes in and ask it to propose clusters. But only *after* you have read every trace yourself. The reading is where your judgment of "wrong for this product" forms, and that judgment is the thing no model has. Using a model to skip the read gives you a clean taxonomy of the model's assumptions.<Ref n={3}/>
+
+Here is what a hundred traces from a RAG support assistant might become after axial coding:<Ref n={3}/>
+
+export const taxonomyData = {
+	labels: [
+		"Wrong document retrieved",
+		"Answer contradicts source",
+		"Partial multi-part answer",
+		"Wrong plan / region",
+		"Refused in-scope request",
+		"Clean — did the job",
+	],
+	datasets: [
+		{
+			label: "Traces (n = 100)",
+			data: [18, 11, 9, 7, 4, 51],
+		},
+	],
+};
+
+<Chart
+	type="bar"
+	height="18rem"
+	data={taxonomyData}
+	options={{
+		indexAxis: "y",
+		scales: {
+			x: { title: { display: true, text: "Count out of 100 traces" }, beginAtZero: true, max: 55 },
+			y: { title: { display: false } },
+		},
+		plugins: { legend: { display: false } },
+	}}
+/>
+
+That table is the product of error analysis. Not a feeling that retrieval "seems flaky" — a ranked, counted statement that your single most common failure is wrong-document retrieval at 18 in 100, and that contradicting the source is a distant but real second. Modes with one or two instances are outliers worth remembering, not categories worth building a whole check for yet.<Ref n={1}/>
+
+Name modes after **what broke**, not after a generic vocabulary. `Retrieved the wrong document` beats `hallucination`. `Assumed the wrong plan or region` beats `information quality`. Split two notes into different modes when they need *different fixes*; merge them when the same fix would clear both.
+
+## When to Stop: Saturation
+
+How do you know a hundred was enough? You watch the categories. While new traces keep adding new failure modes, keep reading. When the last ~20 traces add nothing you have not already named, you have sampled enough to act. Practitioners treat **~100 traces** as an empirical floor and **~20 consecutive with no new category** as the stop heuristic — and still insist you start near a hundred, not twenty.<Ref n={4}/>
+
+**Saturation** is a stop signal, not a quota. Past it, more reading is a way to avoid shipping. It is also local to the current product, model, and traffic mix. Ship a new tool, change the prompt, or migrate models, and the distribution shifts — re-open the spreadsheet. Fixing a dominant mode often *unmasks* the next one that was hiding underneath it.
+
+## Where Error Analysis Goes Wrong
+
+The method is simple. The ways teams hollow it out are predictable.<Ref n={3}/>
+
+| Trap | What it costs you |
+|---|---|
+| Start with someone else's taxonomy | You inherit their failure modes and miss the refund-window bug |
+| Label the fix instead of the failure | Notes will not cluster — you discarded the observation |
+| Count every downstream symptom | Cascade inflation; you pour effort into the wrong place |
+| Delegate the first read | You get a suite that misses the only mode that counts |
+| Grade on a 1–5 scale in your head | Ambiguity hides disagreement; binary "did this mode occur?" keeps counts honest |
+| Stop after one pass | Drift and new features invalidate last month's saturation |
+
+<Callout variant="warn" title="Skimming is not looking">
+Opening a hundred traces, scrolling for ten minutes, feeling vaguely worried, and reaching for a tool is not error analysis. The note column is the entire job.
+</Callout>
+
+## What the Taxonomy Is For
+
+Now — and only now — you know what to measure. You start at the top of the ranked list, because that is where production pain actually is. Each row later becomes dataset examples and a check of some kind. An eval that does not trace back to a row in this taxonomy is an eval you wrote from imagination, and imagination is exactly what produced the green dashboard over a system that keeps failing.<Ref n={1}/>
+
+You do not need those checks yet. The next lessons build the dataset, then the scorers. Today the win is the table: modes, definitions, counts, a few exemplar notes per mode. Without it, every later tool points at the wrong thing.
+
+## Practice
+
+<Reveal prompt="Practice 1 — open-code twelve notes into a taxonomy">
+Below are twelve open-coding notes from a parent tech-support bot (should disclose it is a helper, may look up device facts, should escalate when stuck). Cluster them into named modes, write a one-sentence definition for each mode, and count. Mark which notes share a root cause even if the wording differs.
+
+1. Never said it is a support agent, not the real kid
+2. Reply is a wall of steps; parent will bounce
+3. Invented a Settings icon that does not exist on iPhone
+4. Asked nothing; guessed PIN type wrong
+5. Roleplayed "I'll come over this weekend and fix it"
+6. Said "I can't look that up" though tools allow search
+7. Over-effusive "I love you Mom!!!" tone
+8. Generic Android advice for an iPhone user
+9. Refused a carrier billing question as out of scope wrongly
+10. Answered Wi-Fi fix but missed the factory-reset link that would stick
+11. Pretended to remember a family vacation
+12. Clean — clear short steps, disclosed bot role
+</Reveal>
+
+<Reveal prompt="Practice 2 — first upstream failure on your own workflow">
+Pick one multi-step workflow you own. Pull five real failing traces (or five you can reproduce). For each, write the open-code note under the first-upstream-failure rule — one sentence, observable behavior only, no fix. Then write the three downstream symptoms you deliberately *did not* count.
+</Reveal>
+
+<Reveal prompt="Practice 3 — your first counted taxonomy">
+Pull ~30–50 representative traces from one workflow (or use the twenty outputs from Section 1 Practice 2 if you did it). Open-code every one. Axial-code into 4–8 modes. Produce the table: mode, definition, count, one exemplar note. Do not write a scorer yet. Bring the table to the next session — it is the raw material for the dataset lesson.
+</Reveal>
+
+## Check Yourself
+
+<Quiz questions={[
+	{
+		q: "A team brainstorms failure modes in a meeting, builds an eval suite from that list, and ships at 95% green. A week later users hit a refund-window factuality bug nobody listed. What went wrong?",
+		options: [
+			"They needed a larger brainstorm with more stakeholders",
+			"The suite measured the team's imagination, not the model's observed failures — error analysis has to come before the metric menu",
+			"Factuality bugs cannot be caught by evals",
+			"They should have used a 1–5 Likert scale instead of pass/fail"
+		],
+		answer: 1,
+		explain: "Imagination produces generic worries. Reading traces produces the sharp, product-specific distribution you can actually write checks against. Brainstorm-first recreates the green-dashboard failure."
+	},
+	{
+		q: "In a RAG trace: wrong doc retrieved → answer invents a policy → citation points at the wrong doc → user escalates. Under the first-upstream-failure rule, what do you code?",
+		options: [
+			"All four, so the taxonomy is complete",
+			"Only the escalation, because that is what the user felt",
+			"Wrong document retrieved — the earliest break; the rest are cascade symptoms",
+			"Answer invents a policy — generation is always the real failure"
+		],
+		answer: 2,
+		explain: "Upstream errors cause downstream wreckage. Tagging every symptom quadruple-counts one bug and makes cascade length look like frequency."
+	},
+	{
+		q: "You have open-coded 40 traces. An LLM offers to invent your failure taxonomy from the raw outputs without your notes. Should you accept?",
+		options: [
+			"Yes — models are better at clustering than humans",
+			"Yes, if you validate with a holdout set",
+			"No — the first read is where product judgment forms; an LLM may help cluster notes *after* you have read every trace",
+			"Only if temperature is 0"
+		],
+		answer: 2,
+		explain: "Open coding needs a domain expert. LLMs can propose clusters of notes you already wrote; they cannot supply the judgment of what counts as wrong for this product."
+	},
+	{
+		q: "After ~100 traces, the last 20 add no new failure modes. What does that tell you?",
+		options: [
+			"The product has no remaining failures",
+			"You have hit saturation for this round — stop reading and act on the ranked taxonomy; re-run after major changes",
+			"You must read 100 more to be sure",
+			"Your sample was biased and you should start over"
+		],
+		answer: 1,
+		explain: "Saturation means new traces have stopped teaching you new categories. It is a stop signal for this pass, not a claim of zero residual risk, and it expires when the product or traffic shifts."
+	},
+	{
+		q: "Which open-coding note is written correctly?",
+		options: [
+			"Needs a better prompt and maybe fine-tuning",
+			"Hallucination / information quality issue",
+			"Pulled the cancellation-policy doc; user asked about refunds",
+			"3/5 — somewhat helpful but off"
+		],
+		answer: 2,
+		explain: "Good notes describe observable failure specifically, without prescribing a fix, without a premature category label, and without a vague Likert score."
+	},
+]} />
+
+<Sources list={[
+	{ id: 1, author: "lainlog", year: 2026, title: "Read the outputs. Then read more.", url: "https://lainlog.com/posts/look-at-the-data" },
+	{ id: 2, author: "Ng, A.", year: 2018, title: "Machine Learning Yearning", url: "https://info.deeplearning.ai/hubfs/andrew-ng-machine-learning-yearning-1.pdf" },
+	{ id: 3, author: "Avesta", year: 2026, title: "Error Analysis Is the Eval Work. Here's How to Actually Do It.", url: "https://avestahq.com/blog/how-to-do-error-analysis" },
+	{ id: 4, author: "Husain, H.", year: 2025, title: "Why is error analysis so important in LLM evals, and how is it performed?", url: "https://hamel.dev/blog/posts/evals-faq/why-is-error-analysis-so-important-in-llm-evals-and-how-is-it-performed.html" },
+	{ id: 5, author: "Strick, A.", year: 2025, title: "Error analysis to find failure modes", url: "https://alexstrick.com/posts/2025-05-23-error-analysis-to-find-failure-modes.html" },
+]} />

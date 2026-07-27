@@ -31,7 +31,7 @@ You build LLM workflows — DAGs, agents, RAG pipelines, extractors — and toda
 ## Sections
 
 - [x] 1. **Why AI Systems Break Normal Testing** — Explain what an eval is as measurement rather than assertion, and classify any evaluation question along the model/system, offline/online, reference-based/free, and unit/end-to-end axes
-- [ ] 2. **Error Analysis: Reading Your Own Failures** — Turn a pile of traces into a counted failure taxonomy using open and axial coding, the first-upstream-failure rule, and saturation
+- [x] 2. **Error Analysis: Reading Your Own Failures** — Turn a pile of traces into a counted failure taxonomy using open and axial coding, the first-upstream-failure rule, and saturation
 - [ ] 3. **Building the Eval Dataset** — Bootstrap a dataset from nothing with dimensional synthetic generation, split it for honest reporting, and version it so it can grow without rotting
 - [ ] 4. **Deterministic Scorers and Metric Design** — Score what code can score, choose binary over Likert for good reasons, and place every criterion on the scorer ladder from cheapest to most expensive
 - [ ] 5. **Classification and Extraction Metrics** — Read a confusion matrix, compute precision/recall/F1 for a structured-output node, handle class imbalance and macro vs micro averaging, and pick a threshold from the cost of each error

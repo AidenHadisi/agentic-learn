@@ -9,7 +9,7 @@ Write lessons in MDX using only these components. See `gallery.mdx` (built via
 |-----------|-------|---------|
 | `Meta` | children | One-line subtitle under the lesson title (reading time is added automatically) |
 | `Callout` | `variant`: key/warn/info/tip, `title?` | Highlight important points |
-| `Quiz` | `questions`: array of `{ q, options, answer, explain }` (`answer`: option index **or** exact option string) | Self-scored quiz |
+| `Quiz` | `questions`: array of `{ q, options, answer, explain }` (`answer`: option index **or** exact option string) | Self-scored quiz. Keep options similar in length — the correct one must not be the longest. |
 | `Flashcards` | `cards[]`: `{ front, back }` (both accept JSX) | Flip-to-recall deck with shuffle and a review pass |
 | `Stepper` | children: `<Step>` elements | Ordered process walkthrough |
 | `Reveal` | `prompt?`, children | Hide-then-show for predictions |
