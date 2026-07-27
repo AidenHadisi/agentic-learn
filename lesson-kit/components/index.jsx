@@ -13,17 +13,3 @@ export { CodeBlock } from "./CodeBlock.jsx";
 export { Figure } from "./Figure.jsx";
 export { Sources } from "./Sources.jsx";
 export { Ref } from "./Ref.jsx";
-
-import { CodeBlock } from "./CodeBlock.jsx";
-import React from "react";
-
-export const components = {
-	pre: ({ children }) => children,
-	code: ({ className, children, ...rest }) => {
-		const match = /language-(\w+)/.exec(className || "");
-		if (match) {
-			return <CodeBlock language={match[1]} code={String(children).trimEnd()} />;
-		}
-		return <code className={className} {...rest}>{children}</code>;
-	},
-};

@@ -8,12 +8,12 @@
 	},
 	"description": "A personal learning environment with MDX interactive lessons. Each topic has a syllabus, journal, and self-contained HTML lessons built from compact MDX sources.",
 	"scripts": {
-		"lesson:new": "node scripts/lesson.mjs new",
-		"lesson:build": "node scripts/lesson.mjs build",
-		"lessons:build": "node scripts/lesson.mjs build-all && node scripts/index.mjs",
-		"gallery:build": "node scripts/lesson.mjs build lesson-kit/gallery.mdx",
-		"index:build": "node scripts/index.mjs",
-		"validate:state": "node scripts/validate-state.mjs",
+		"lesson:new": "node lesson-kit/scripts/lesson.mjs new",
+		"lesson:build": "node lesson-kit/scripts/lesson.mjs build",
+		"lessons:build": "node lesson-kit/scripts/lesson.mjs build-all && node index.mjs",
+		"gallery:build": "node lesson-kit/scripts/lesson.mjs build lesson-kit/gallery.mdx",
+		"index:build": "node index.mjs",
+		"validate:state": "node validate-state.mjs",
 		"check": "npm run validate:state"
 	},
 	"keywords": [],

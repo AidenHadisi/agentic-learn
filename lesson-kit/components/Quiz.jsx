@@ -1,8 +1,8 @@
 import React, { useCallback } from "react";
 import { contentKey, usePersistentState } from "../persist.js";
 
-// Answers are validated at build time by scripts/lesson.mjs. Tagging the correct
-// option before shuffling keeps the authored index from having to be remapped.
+// Answers are validated at build time by lesson-kit/scripts/lesson.mjs. Tagging
+// the correct option before shuffling keeps the authored index from remapping.
 function prepareQuestion({ answer, options, ...rest }) {
 	const correctIndex = typeof answer === "number" ? answer : options.indexOf(answer);
 	const prepared = options.map((text, i) => ({ text, correct: i === correctIndex }));

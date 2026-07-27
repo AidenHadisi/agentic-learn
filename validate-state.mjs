@@ -1,8 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = import.meta.dirname;
 const topicsDir = path.join(root, "topics");
 const failures = [];
 
@@ -19,19 +18,32 @@ function requireHeadings(file, markdown, expected) {
 	}
 }
 
+function rejectConflictMarkers(file, markdown) {
+	if (/^[<>=]{7}/m.test(markdown)) {
+		failures.push(`${file}: contains merge conflict markers`);
+	}
+}
+
+async function exists(file) {
+	try {
+		await fs.access(file);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 const entries = await fs.readdir(topicsDir, { withFileTypes: true });
-for (const entry of entries.filter((e) => e.isDirectory())) {
+for (const entry of entries) {
+	if (!entry.isDirectory()) continue;
+
 	const topic = path.join(topicsDir, entry.name);
 	const rel = (f) => path.relative(root, f);
-
 	const syllabusPath = path.join(topic, "syllabus.md");
 	const journalPath = path.join(topic, "journal.md");
+	const sourcesPath = path.join(topic, "sources.md");
 
-	try {
-		await fs.access(syllabusPath);
-	} catch {
-		continue;
-	}
+	if (!(await exists(syllabusPath))) continue;
 
 	const [syllabus, journal] = await Promise.all([
 		fs.readFile(syllabusPath, "utf8"),
@@ -43,7 +55,6 @@ for (const entry of entries.filter((e) => e.isDirectory())) {
 		"Out of Scope",
 		"Sections",
 	]);
-
 	requireHeadings(rel(journalPath), journal, [
 		"Student Profile",
 		"Established Knowledge",
@@ -51,10 +62,7 @@ for (const entry of entries.filter((e) => e.isDirectory())) {
 		"Weak Spots",
 	]);
 
-	const sourcesPath = path.join(topic, "sources.md");
-	try {
-		await fs.access(sourcesPath);
-	} catch {
+	if (!(await exists(sourcesPath))) {
 		failures.push(`${rel(sourcesPath)}: missing — record what you read while researching`);
 	}
 
@@ -62,16 +70,12 @@ for (const entry of entries.filter((e) => e.isDirectory())) {
 		failures.push(`${rel(journalPath)}: contains a quiz score`);
 	}
 
-	if (/^[<>=]{7}/m.test(syllabus)) {
-		failures.push(`${rel(syllabusPath)}: contains merge conflict markers`);
-	}
-	if (/^[<>=]{7}/m.test(journal)) {
-		failures.push(`${rel(journalPath)}: contains merge conflict markers`);
-	}
+	rejectConflictMarkers(rel(syllabusPath), syllabus);
+	rejectConflictMarkers(rel(journalPath), journal);
 }
 
 if (failures.length) {
-	failures.forEach((f) => console.error(f));
+	for (const f of failures) console.error(f);
 	process.exitCode = 1;
 } else {
 	console.log("Topic state validation passed");

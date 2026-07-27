@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { chartHash } from "../lesson-kit/mermaid-hash.js";
+import { chartHash } from "../mermaid-hash.js";
+import { evaluateExpression } from "./lesson-ast.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const kitDir = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(kitDir, "..");
 const cacheDir = path.join(root, ".cache", "mermaid");
 const mermaidBundle = path.join(root, "node_modules", "mermaid", "dist", "mermaid.min.js");
 
@@ -20,22 +21,27 @@ function label(chart) {
 	return chart.trim().split("\n")[0].slice(0, 80);
 }
 
-function extractCharts(mdxSource) {
+function extractCharts(lesson) {
 	const charts = [];
-	for (const m of mdxSource.matchAll(/<Mermaid\s+chart=\{`([\s\S]*?)`\}\s*\/>/g)) {
-		charts.push(m[1].trim());
-	}
-	const tags = (mdxSource.match(/<Mermaid\b/g) || []).length;
-	if (tags !== charts.length) {
-		die(
-			`found ${tags} <Mermaid> tag(s) but could only parse ${charts.length}.\n` +
-			"Diagrams must be written as <Mermaid chart={`...`} /> with a plain template literal.",
-		);
-	}
-	for (const chart of charts) {
-		if (chart.includes("${")) {
-			die(`Mermaid chart uses \${} interpolation, which cannot be pre-rendered: ${label(chart)}`);
+	for (const mermaid of lesson.mermaids) {
+		if (!mermaid.expression) {
+			die(
+				`line ${mermaid.line}: <Mermaid> is missing chart={\`...\`}.\n` +
+				"Diagrams must be written as <Mermaid chart={`...`} /> with a plain template literal.",
+			);
 		}
+		if (mermaid.expression.includes("${")) {
+			die(`line ${mermaid.line}: Mermaid chart uses \${} interpolation, which cannot be pre-rendered`);
+		}
+
+		const parsed = evaluateExpression(mermaid.expression);
+		if (!parsed.ok || typeof parsed.value !== "string") {
+			die(
+				`line ${mermaid.line}: <Mermaid> chart must be a plain template literal.\n` +
+				`  ${parsed.ok ? "got a non-string value" : parsed.reason}`,
+			);
+		}
+		charts.push(parsed.value.trim());
 	}
 	return charts;
 }
@@ -47,6 +53,7 @@ async function renderCharts(jobs) {
 		const page = await browser.newPage();
 		await page.setContent("<!DOCTYPE html><html><body></body></html>");
 		await page.addScriptTag({ path: mermaidBundle });
+
 		const results = await page.evaluate(async (batch) => {
 			const out = [];
 			for (const job of batch) {
@@ -61,22 +68,21 @@ async function renderCharts(jobs) {
 			return out;
 		}, jobs.map(({ id, theme, chart }) => ({ id, theme, chart })));
 
-		results.forEach((result, i) => {
+		for (const [i, result] of results.entries()) {
 			if (result.error) {
 				die(`Mermaid diagram failed to render (${jobs[i].theme} theme): ${label(jobs[i].chart)}\n  ${result.error}`);
 			}
 			fs.writeFileSync(jobs[i].file, result.svg);
-		});
+		}
 		return results.map((r) => r.svg);
 	} finally {
 		await browser.close();
 	}
 }
 
-// Pre-renders every diagram in the lesson to SVG (once per theme) and writes the
-// hash -> { light, dark } map that vite.config.js serves as `virtual:mermaid-svgs`.
-export async function buildSvgMap(mdxSource) {
-	const charts = extractCharts(mdxSource);
+// Pre-render every diagram (once per theme); vite.config.js loads the map as virtual:mermaid-svgs.
+export async function buildSvgMap(lesson) {
+	const charts = extractCharts(lesson);
 	fs.mkdirSync(cacheDir, { recursive: true });
 
 	const map = {};
@@ -97,7 +103,9 @@ export async function buildSvgMap(mdxSource) {
 
 	if (jobs.length > 0) {
 		const svgs = await renderCharts(jobs);
-		jobs.forEach((job, i) => { map[job.hash][job.variant] = svgs[i]; });
+		jobs.forEach((job, i) => {
+			map[job.hash][job.variant] = svgs[i];
+		});
 	}
 
 	fs.writeFileSync(svgMapPath, JSON.stringify(map));

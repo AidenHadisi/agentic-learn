@@ -16,5 +16,6 @@ Before responding, read `.cursor/skills/teach/SKILL.md` and follow it.
 ## Layout
 
 - `.cursor/skills/teach/` — the teaching skill
-- `lesson-kit/` — MDX components, styles, build config, gallery
+- `lesson-kit/` — MDX components, styles, build config, gallery, lesson build scripts
+- `index.mjs` / `validate-state.mjs` — topic index + syllabus/journal validators
 - `topics/<slug>/` — one directory per topic

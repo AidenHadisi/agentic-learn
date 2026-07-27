@@ -9,22 +9,31 @@ import sql from "highlight.js/lib/languages/sql";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 
-hljs.registerLanguage("bash", bash);
-hljs.registerLanguage("shell", bash);
-hljs.registerLanguage("sh", bash);
-hljs.registerLanguage("go", go);
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("js", javascript);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("py", python);
-hljs.registerLanguage("sql", sql);
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("ts", typescript);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("html", xml);
+// Register inside the component so this module has no top-level side effects.
+// Otherwise an unused `export { CodeBlock }` from the barrel keeps highlight.js
+// in every lesson bundle.
+let registered = false;
+function ensureRegistered() {
+	if (registered) return;
+	hljs.registerLanguage("bash", bash);
+	hljs.registerLanguage("shell", bash);
+	hljs.registerLanguage("sh", bash);
+	hljs.registerLanguage("go", go);
+	hljs.registerLanguage("javascript", javascript);
+	hljs.registerLanguage("js", javascript);
+	hljs.registerLanguage("json", json);
+	hljs.registerLanguage("python", python);
+	hljs.registerLanguage("py", python);
+	hljs.registerLanguage("sql", sql);
+	hljs.registerLanguage("typescript", typescript);
+	hljs.registerLanguage("ts", typescript);
+	hljs.registerLanguage("xml", xml);
+	hljs.registerLanguage("html", xml);
+	registered = true;
+}
 
 function highlight(code, language) {
+	ensureRegistered();
 	if (language && hljs.getLanguage(language)) {
 		return hljs.highlight(code, { language }).value;
 	}

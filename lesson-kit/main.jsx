@@ -2,7 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { MDXProvider } from "@mdx-js/react";
 import Lesson from "@learn/lesson";
-import { components } from "@learn/components";
+import { components } from "@learn/mdx-overrides";
 import { LessonShell } from "./LessonShell.jsx";
 import "virtual:katex-styles";
 import "./styles/fonts.css";

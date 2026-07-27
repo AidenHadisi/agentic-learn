@@ -1,16 +1,14 @@
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { buildSvgMap, svgMapPath } from "./mermaid.mjs";
+import { build } from "vite";
 import { evaluateExpression, parseLesson } from "./lesson-ast.mjs";
+import { buildSvgMap, svgMapPath } from "./mermaid.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const kitDir = path.join(root, "lesson-kit");
+const kitDir = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(kitDir, "..");
 const topicsDir = path.join(root, "topics");
 const catalogPath = path.join(kitDir, "components/index.jsx");
-
-const [command, ...args] = process.argv.slice(2);
+const galleryPath = path.join(kitDir, "gallery.mdx");
 
 const STUB = `import { Callout, Meta, Quiz, Stepper, Step, Sources } from "@learn/components";
 
@@ -49,22 +47,34 @@ Give the student something to try themselves. Do not include the solution.
 ]} />
 `;
 
+function escapeHtml(text) {
+	return text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
+
 function loadCatalog() {
-	const src = fs.readFileSync(catalogPath, "utf8");
 	const names = new Set();
-	for (const block of src.matchAll(/export\s*\{([^}]+)\}/g)) {
-		for (const part of block[1].split(",")) {
+	for (const line of fs.readFileSync(catalogPath, "utf8").split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("//")) continue;
+		const match = /^export\s*\{([^}]+)\}\s*from\s*["'][^"']+["']\s*;?\s*$/.exec(trimmed);
+		if (!match) {
+			throw new Error(`unexpected catalog line in ${path.relative(root, catalogPath)}: ${trimmed}`);
+		}
+		for (const part of match[1].split(",")) {
 			const name = part.trim().split(/\s+as\s+/).pop()?.trim();
 			if (name) names.add(name);
 		}
 	}
-	names.delete("components");
 	return names;
 }
 
-function validateComponents(lesson, failures) {
-	const catalog = loadCatalog();
+const catalog = loadCatalog();
 
+function validateComponents(lesson, failures) {
 	for (const [name, line] of lesson.used) {
 		if (!catalog.has(name)) {
 			failures.push(
@@ -100,11 +110,11 @@ function validateQuizzes(lesson, failures) {
 			continue;
 		}
 
-		parsed.value.forEach((question, index) => {
+		for (const [index, question] of parsed.value.entries()) {
 			const where = `line ${quiz.line}, question ${index + 1}`;
 			if (!question || !Array.isArray(question.options) || question.options.length === 0) {
 				failures.push(`${where}: needs a non-empty options array`);
-				return;
+				continue;
 			}
 
 			const { answer, options, q } = question;
@@ -124,7 +134,7 @@ function validateQuizzes(lesson, failures) {
 			} else {
 				failures.push(`${where}: answer must be an option index or an exact option string\n  q: ${q}`);
 			}
-		});
+		}
 	}
 }
 
@@ -140,10 +150,9 @@ function validateSources(lesson, failures) {
 		return null;
 	}
 
-	parsed.value.forEach((source, index) => {
-		if (!source?.url) return;
-		// Sources.jsx renders the hostname with `new URL`, which throws mid-render
-		// on a malformed href and blanks the whole lesson.
+	for (const [index, source] of parsed.value.entries()) {
+		if (!source?.url) continue;
+		// Sources.jsx uses `new URL` for the hostname; a bad href blanks the lesson.
 		try {
 			new URL(source.url);
 		} catch {
@@ -151,7 +160,7 @@ function validateSources(lesson, failures) {
 				`line ${lesson.sources.line}: source ${index + 1} has an unparseable url: ${JSON.stringify(source.url)}`,
 			);
 		}
-	});
+	}
 
 	return parsed.value.length;
 }
@@ -185,15 +194,14 @@ function validateLesson(mdxSource, resolved) {
 	validateComponents(lesson, failures);
 	validateQuizzes(lesson, failures);
 
-	// The gallery demonstrates components rather than teaching, so it carries no
-	// bibliography.
-	if (!resolved.includes(`${path.sep}lesson-kit${path.sep}`)) {
+	// Gallery demos components; it has no bibliography.
+	if (path.resolve(resolved) !== galleryPath) {
 		validateRefs(lesson, validateSources(lesson, failures), failures);
 	}
 
 	if (failures.length > 0) {
 		console.error(`\nBuild failed — ${path.relative(root, resolved)}\n`);
-		failures.forEach((failure) => console.error(`  ${failure}\n`));
+		for (const failure of failures) console.error(`  ${failure}\n`);
 		process.exit(1);
 	}
 
@@ -203,17 +211,17 @@ function validateLesson(mdxSource, resolved) {
 async function buildLesson(resolved) {
 	const mdxSource = fs.readFileSync(resolved, "utf8");
 	const lesson = validateLesson(mdxSource, resolved);
-	await buildSvgMap(mdxSource);
+	await buildSvgMap(lesson);
 
-	execSync("npx vite build --mode production", {
-		cwd: kitDir,
-		stdio: "inherit",
-		env: {
-			...process.env,
-			LESSON_ENTRY: resolved,
-			MERMAID_SVGS: svgMapPath,
-			LESSON_HAS_MATH: lesson.hasMath ? "1" : "",
-		},
+	process.env.LESSON_ENTRY = resolved;
+	process.env.MERMAID_SVGS = svgMapPath;
+	process.env.LESSON_HAS_MATH = lesson.hasMath ? "1" : "";
+	process.env.LESSON_HAS_CODE = lesson.hasCode ? "1" : "";
+
+	await build({
+		configFile: path.join(kitDir, "vite.config.js"),
+		root: kitDir,
+		mode: "production",
 	});
 
 	const built = path.join(kitDir, "dist", "index.html");
@@ -225,13 +233,26 @@ async function buildLesson(resolved) {
 	let html = fs.readFileSync(built, "utf8");
 	const heading = mdxSource.match(/^#\s+(.+)$/m);
 	if (heading) {
-		html = html.replace(/<title>[^<]*<\/title>/, `<title>${heading[1]}</title>`);
+		html = html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(heading[1])}</title>`);
 	}
 
 	const outHtml = resolved.replace(/\.mdx$/, ".html");
 	fs.writeFileSync(outHtml, html);
 	console.log(`Built → ${path.relative(root, outHtml)}`);
 }
+
+function listTopicLessons() {
+	if (!fs.existsSync(topicsDir)) return [];
+	return fs.readdirSync(topicsDir)
+		.map((slug) => path.join(topicsDir, slug, "lessons"))
+		.filter((dir) => fs.existsSync(dir))
+		.flatMap((dir) => fs.readdirSync(dir)
+			.filter((name) => name.endsWith(".mdx"))
+			.sort()
+			.map((name) => path.join(dir, name)));
+}
+
+const [command, ...args] = process.argv.slice(2);
 
 if (command === "new") {
 	const target = args[0];
@@ -264,16 +285,7 @@ if (command === "new") {
 	}
 	await buildLesson(resolved);
 } else if (command === "build-all") {
-	const lessons = fs.existsSync(topicsDir)
-		? fs.readdirSync(topicsDir)
-			.map((slug) => path.join(topicsDir, slug, "lessons"))
-			.filter((dir) => fs.existsSync(dir))
-			.flatMap((dir) => fs.readdirSync(dir)
-				.filter((name) => name.endsWith(".mdx"))
-				.sort()
-				.map((name) => path.join(dir, name)))
-		: [];
-
+	const lessons = listTopicLessons();
 	for (const lesson of lessons) {
 		await buildLesson(lesson);
 	}

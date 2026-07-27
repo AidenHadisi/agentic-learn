@@ -3,13 +3,11 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { visit } from "unist-util-visit";
 
-// Parse-only pipeline: the same remark plugins vite.config.js compiles with, so
-// what the validators see is what the build will render. Reading the tree rather
-// than the raw text means component names inside code fences and inline code are
-// not mistaken for real usage.
+// Same remark plugins as vite.config.js, so validators see what the build renders.
+// Walking the AST (not raw text) skips component names inside code fences.
 const processor = createProcessor({ remarkPlugins: [remarkGfm, remarkMath] });
 
-const JSX_NODES = ["mdxJsxFlowElement", "mdxJsxTextElement"];
+const JSX_NODES = new Set(["mdxJsxFlowElement", "mdxJsxTextElement"]);
 
 function line(node) {
 	return node?.position?.start?.line ?? 0;
@@ -24,11 +22,7 @@ function attributeExpression(node, name) {
 	return value.value ?? null;
 }
 
-/**
- * Evaluate a JSX attribute expression that is expected to be a plain literal.
- * Returns `{ ok: true, value }`, or `{ ok: false, reason }` when the expression
- * references identifiers or embeds JSX and so cannot be checked statically.
- */
+/** Evaluate a plain JSX attribute literal. Returns `{ ok, value }` or `{ ok: false, reason }`. */
 export function evaluateExpression(source) {
 	try {
 		return { ok: true, value: new Function(`return (${source})`)() };
@@ -38,8 +32,8 @@ export function evaluateExpression(source) {
 }
 
 /**
- * Read a lesson's structure once: which components it uses and imports, where
- * its quizzes, citations and bibliography are, and whether it contains math.
+ * Extract lesson structure for validation and conditional asset loading:
+ * used/imported components, quizzes, refs, Sources, Mermaid charts, math, code.
  */
 export function parseLesson(mdxSource) {
 	const tree = processor.parse(mdxSource);
@@ -48,12 +42,20 @@ export function parseLesson(mdxSource) {
 	const imported = new Set();
 	const quizzes = [];
 	const refs = [];
+	const mermaids = [];
 	let sources = null;
 	let hasMath = false;
+	let hasCode = false;
 
 	visit(tree, (node) => {
 		if (node.type === "math" || node.type === "inlineMath") {
 			hasMath = true;
+			return;
+		}
+
+		// Fenced blocks with a language → highlight.js; plain fences stay plain.
+		if (node.type === "code" && node.lang) {
+			hasCode = true;
 			return;
 		}
 
@@ -67,10 +69,10 @@ export function parseLesson(mdxSource) {
 			return;
 		}
 
-		if (!JSX_NODES.includes(node.type) || !node.name) return;
-		if (!/^[A-Z]/.test(node.name)) return;
+		if (!JSX_NODES.has(node.type) || !node.name || !/^[A-Z]/.test(node.name)) return;
 
 		if (!used.has(node.name)) used.set(node.name, line(node));
+		if (node.name === "CodeBlock") hasCode = true;
 
 		if (node.name === "Quiz") {
 			quizzes.push({ expression: attributeExpression(node, "questions"), line: line(node) });
@@ -78,8 +80,12 @@ export function parseLesson(mdxSource) {
 			refs.push({ expression: attributeExpression(node, "n"), line: line(node) });
 		} else if (node.name === "Sources") {
 			sources = { expression: attributeExpression(node, "list"), line: line(node) };
+		} else if (node.name === "Mermaid") {
+			mermaids.push({ expression: attributeExpression(node, "chart"), line: line(node) });
 		}
 	});
 
-	return { used, imported, quizzes, refs, sources, hasMath };
+	if (imported.has("CodeBlock")) hasCode = true;
+
+	return { used, imported, quizzes, refs, mermaids, sources, hasMath, hasCode };
 }

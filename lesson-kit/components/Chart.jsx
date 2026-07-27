@@ -19,24 +19,31 @@ import {
 	Legend,
 } from "chart.js";
 
-ChartJS.register(
-	CategoryScale,
-	LinearScale,
-	LogarithmicScale,
-	PointElement,
-	LineElement,
-	LineController,
-	BarElement,
-	BarController,
-	ArcElement,
-	DoughnutController,
-	PieController,
-	ScatterController,
-	Filler,
-	Title,
-	Tooltip,
-	Legend,
-);
+// Register inside the component so this module has no top-level side effects.
+// Otherwise Rollup keeps Chart.js in every lesson even when Chart is unused.
+let registered = false;
+function ensureRegistered() {
+	if (registered) return;
+	ChartJS.register(
+		CategoryScale,
+		LinearScale,
+		LogarithmicScale,
+		PointElement,
+		LineElement,
+		LineController,
+		BarElement,
+		BarController,
+		ArcElement,
+		DoughnutController,
+		PieController,
+		ScatterController,
+		Filler,
+		Title,
+		Tooltip,
+		Legend,
+	);
+	registered = true;
+}
 
 /** Legible against both the light and dark lesson backgrounds. */
 const SERIES_COLORS = ["#0d9488", "#6366f1", "#f59e0b", "#db2777", "#0891b2", "#84cc16"];
@@ -82,6 +89,7 @@ export function Chart({ type = "line", data, options, height }) {
 	useEffect(() => {
 		if (!canvasRef.current) return;
 
+		ensureRegistered();
 		ChartJS.defaults.color = cssToken("--text-muted", "#57534e");
 		ChartJS.defaults.borderColor = cssToken("--border", "#e7e5e4");
 		ChartJS.defaults.font.family = cssToken("--font-body", "system-ui, sans-serif");

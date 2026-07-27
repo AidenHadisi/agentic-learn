@@ -7,5 +7,10 @@
 import { fnv1a } from "./hash.js";
 
 export function chartHash(chart) {
-	return fnv1a(chart.trim().split("\n").map((line) => line.trim()).join("\n"));
+	const normalized = chart
+		.trim()
+		.split("\n")
+		.map((line) => line.trim())
+		.join("\n");
+	return fnv1a(normalized);
 }
